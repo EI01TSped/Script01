@@ -5,9 +5,9 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
-    Name = "Script Tsuo Hub",
+    Name = "Pedja Hub 👑",
     LoadingTitle = "Carregando Script...",
-    LoadingSubtitle = "by ChatGPT",
+    LoadingSubtitle = "by Pedro Lc",
     ConfigurationSaving = {
        Enabled = true,
        FolderName = nil,
