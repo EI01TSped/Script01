@@ -14,6 +14,12 @@ local Window = WindUI:CreateWindow({
     Transparent = true,
 })
 
+Window:Tag({
+    Title = "v1.6.6",
+    Icon = "github",
+    Color = Color3.fromHex("#30ff6a"),
+    Radius = 0, -- from 0 to 13
+})
 -- ==================== ABA PERFORMANCE ====================
 local PerformanceTab = Window:Tab({
     Title = "Principal",
