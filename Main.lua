@@ -11,12 +11,12 @@ local Window = WindUI:CreateWindow({
     Folder = "PedV1Config",
     Size = UDim2.fromOffset(580, 460),
     KeySystem = false,
-    Transparent = false,
+    Transparent = true,
 })
 
 -- ==================== ABA PERFORMANCE ====================
 local PerformanceTab = Window:Tab({
-    Title = "Performance",
+    Title = "Principal",
     Icon = "activity"
 })
 
@@ -144,7 +144,7 @@ UtilSection:Button({
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
     Content = "Script desenvolvido por yPedroX",
-    Duration = 5
+    Duration = 7
 })
 
 print("==========================================")
