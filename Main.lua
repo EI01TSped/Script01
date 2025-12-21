@@ -4,6 +4,8 @@ local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/rel
 
 -- Serviços
 local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 -- Criar janela
@@ -74,126 +76,168 @@ CombatSection:Button({
 })
 
 -- ==================== ABA ESP ====================
-local UtilTab = Window:Tab({
+local EspTab = Window:Tab({
     Title = "ESP",
     Icon = "brush"
 })
 
-local UtilSection = UtilTab:Section({
+local EspSection = EspTab:Section({
     Title = "ESP Config",
     Closed = false
 })
 
--- ==================== SISTEMA ESP ====================
-local espEnabled = false
-local espObjects = {}
+-- ==================== VARIÁVEIS ====================
+local espPlayersEnabled = false
+local espKillerEnabled = false
+local espGeneratorEnabled = false
 
-local function createESP(player)
+local playerESP = {}
+local killerESP = {}
+local generatorESP = {}
+
+-- ==================== FUNÇÕES PLAYER ESP ====================
+local function createPlayerESP(player, color, storeTable)
     if player == LocalPlayer then return end
     if not player.Character then return end
-    if espObjects[player] then return end
+    if storeTable[player] then return end
 
     local char = player.Character
     local head = char:FindFirstChild("Head")
     if not head then return end
 
-    -- Highlight (contorno)
     local highlight = Instance.new("Highlight")
-    highlight.Name = "PedESP"
-    highlight.Adornee = char
     highlight.FillTransparency = 1
     highlight.OutlineTransparency = 0.5
-    highlight.OutlineColor = Color3.fromRGB(0, 255, 0)
+    highlight.OutlineColor = color
+    highlight.Adornee = char
     highlight.Parent = char
 
-    -- Nome
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "PedESPName"
-    billboard.Adornee = head
-    billboard.Size = UDim2.new(0, 200, 0, 40)
-    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    billboard.Size = UDim2.new(0, 120, 0, 22) -- 👈 nome menor
+    billboard.StudsOffset = Vector3.new(0, 2.3, 0)
     billboard.AlwaysOnTop = true
+    billboard.Adornee = head
     billboard.Parent = head
 
     local text = Instance.new("TextLabel")
     text.Size = UDim2.new(1, 0, 1, 0)
     text.BackgroundTransparency = 1
     text.Text = player.Name
-    text.TextColor3 = Color3.fromRGB(0, 255, 0)
-    text.TextStrokeTransparency = 0.4
     text.TextScaled = true
     text.Font = Enum.Font.GothamBold
+    text.TextColor3 = color
+    text.TextStrokeTransparency = 0.5
     text.Parent = billboard
 
-    espObjects[player] = {highlight, billboard}
+    storeTable[player] = {highlight, billboard}
 end
 
-local function removeESP(player)
-    if espObjects[player] then
-        for _, obj in ipairs(espObjects[player]) do
+local function removeESPFromTable(tbl)
+    for player, objs in pairs(tbl) do
+        for _, obj in ipairs(objs) do
             if obj and obj.Parent then
                 obj:Destroy()
             end
         end
-        espObjects[player] = nil
+        tbl[player] = nil
     end
 end
 
-local function enableESP()
-    for _, player in ipairs(Players:GetPlayers()) do
-        createESP(player)
-    end
+-- ==================== ESP GENERATOR ====================
+local function applyGeneratorESP(model)
+    if generatorESP[model] then return end
 
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function()
-            task.wait(1)
-            if espEnabled then
-                createESP(player)
-            end
-        end)
-    end)
+    local highlight = Instance.new("Highlight")
+    highlight.FillTransparency = 1
+    highlight.OutlineTransparency = 0.4
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 0)
+    highlight.Adornee = model
+    highlight.Parent = model
+
+    generatorESP[model] = highlight
 end
 
-local function disableESP()
-    for player, _ in pairs(espObjects) do
-        removeESP(player)
+local function scanGenerators()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.Name == "Generator" then
+            applyGeneratorESP(obj)
+        end
     end
 end
 
--- ==================== TOGGLE ESP ====================
-UtilSection:Toggle({
-    Title = "ESP Players",
-    Description = "Contorno verde e nome dos jogadores",
+-- ==================== TOGGLES ====================
+EspSection:Toggle({
+    Title = "ESP Players (Verde)",
     Default = false,
-    Callback = function(value)
-        espEnabled = value
-
-        if value then
-            enableESP()
-            WindUI:Notify({
-                Title = "ESP Ativado",
-                Content = "ESP leve ligado",
-                Duration = 3
-            })
+    Callback = function(v)
+        espPlayersEnabled = v
+        if v then
+            for _, p in ipairs(Players:GetPlayers()) do
+                createPlayerESP(p, Color3.fromRGB(0,255,0), playerESP)
+            end
         else
-            disableESP()
-            WindUI:Notify({
-                Title = "ESP Desativado",
-                Content = "ESP desligado",
-                Duration = 3
-            })
+            removeESPFromTable(playerESP)
         end
     end
 })
 
+EspSection:Toggle({
+    Title = "ESP Killer (Vermelho)",
+    Default = false,
+    Callback = function(v)
+        espKillerEnabled = v
+        if v then
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Team and p.Team.Name == "Killer" then
+                    createPlayerESP(p, Color3.fromRGB(255,0,0), killerESP)
+                end
+            end
+        else
+            removeESPFromTable(killerESP)
+        end
+    end
+})
+
+EspSection:Toggle({
+    Title = "ESP Generator (Amarelo)",
+    Default = false,
+    Callback = function(v)
+        espGeneratorEnabled = v
+        if v then
+            scanGenerators()
+        else
+            for _, h in pairs(generatorESP) do
+                if h and h.Parent then h:Destroy() end
+            end
+            generatorESP = {}
+        end
+    end
+})
+
+-- ==================== EVENTOS ====================
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(1)
+        if espPlayersEnabled then
+            createPlayerESP(player, Color3.fromRGB(0,255,0), playerESP)
+        end
+        if espKillerEnabled and player.Team and player.Team.Name == "Killer" then
+            createPlayerESP(player, Color3.fromRGB(255,0,0), killerESP)
+        end
+    end)
+end)
+
+Workspace.DescendantAdded:Connect(function(obj)
+    if espGeneratorEnabled and obj:IsA("Model") and obj.Name == "Generator" then
+        applyGeneratorESP(obj)
+    end
+end)
+
 -- ==================== NOTIFICAÇÃO FINAL ====================
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
-    Content = "Script desenvolvido por yPedroX",
+    Content = "ESP avançado Carregado",
     Duration = 7
 })
 
-print("==========================================")
-print("Ped V1 - Carregado com Sucesso!")
-print("Desenvolvido por: yPedroX")
-print("==========================================")
+print("Ped V1 carregado com sucesso")
