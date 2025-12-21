@@ -2,6 +2,10 @@
 -- Carregando Wind UI
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
+-- Serviços
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
 -- Criar janela
 local Window = WindUI:CreateWindow({
     Title = "Ped V1",
@@ -18,9 +22,10 @@ Window:Tag({
     Title = "v1.0",
     Icon = "github",
     Color = Color3.fromHex("#30ff6a"),
-    Radius = 0, -- from 0 to 13
+    Radius = 0,
 })
--- ==================== ABA PERFORMANCE ====================
+
+-- ==================== ABA PRINCIPAL ====================
 local PerformanceTab = Window:Tab({
     Title = "Principal",
     Icon = "tool-case"
@@ -31,7 +36,6 @@ local PerformanceSection = PerformanceTab:Section({
     Closed = true
 })
 
--- Anti Lag TSB
 PerformanceSection:Button({
     Title = "Anti Lag TSB",
     Description = "Remove lag do The Strongest Battlegrounds",
@@ -56,7 +60,6 @@ local CombatSection = CombatTab:Section({
     Closed = false
 })
 
--- Aimlock
 CombatSection:Button({
     Title = "Aimlock",
     Description = "Gruda a câmera no inimigo mais próximo",
@@ -70,83 +73,120 @@ CombatSection:Button({
     end
 })
 
--- ==================== ABA UTILIDADES ====================
+-- ==================== ABA ESP ====================
 local UtilTab = Window:Tab({
-    Title = "Esp",
+    Title = "ESP",
     Icon = "brush"
 })
 
 local UtilSection = UtilTab:Section({
-    Title = "Esp config",
+    Title = "ESP Config",
     Closed = false
 })
 
--- Variável para controlar o auto reset
-local autoResetEnabled = false
-local autoResetLoop = nil
+-- ==================== SISTEMA ESP ====================
+local espEnabled = false
+local espObjects = {}
 
--- Toggle Auto Reset
+local function createESP(player)
+    if player == LocalPlayer then return end
+    if not player.Character then return end
+    if espObjects[player] then return end
+
+    local char = player.Character
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    -- Highlight (contorno)
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "PedESP"
+    highlight.Adornee = char
+    highlight.FillTransparency = 1
+    highlight.OutlineTransparency = 0.5
+    highlight.OutlineColor = Color3.fromRGB(0, 255, 0)
+    highlight.Parent = char
+
+    -- Nome
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "PedESPName"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 200, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = head
+
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.BackgroundTransparency = 1
+    text.Text = player.Name
+    text.TextColor3 = Color3.fromRGB(0, 255, 0)
+    text.TextStrokeTransparency = 0.4
+    text.TextScaled = true
+    text.Font = Enum.Font.GothamBold
+    text.Parent = billboard
+
+    espObjects[player] = {highlight, billboard}
+end
+
+local function removeESP(player)
+    if espObjects[player] then
+        for _, obj in ipairs(espObjects[player]) do
+            if obj and obj.Parent then
+                obj:Destroy()
+            end
+        end
+        espObjects[player] = nil
+    end
+end
+
+local function enableESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        createESP(player)
+    end
+
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function()
+            task.wait(1)
+            if espEnabled then
+                createESP(player)
+            end
+        end)
+    end)
+end
+
+local function disableESP()
+    for player, _ in pairs(espObjects) do
+        removeESP(player)
+    end
+end
+
+-- ==================== TOGGLE ESP ====================
 UtilSection:Toggle({
-    Title = "Auto Reset a cada 4 minutos",
-    Description = "Mata o personagem automaticamente a cada 4 minutos",
+    Title = "ESP Players",
+    Description = "Contorno verde e nome dos jogadores",
     Default = false,
     Callback = function(value)
-        autoResetEnabled = value
-        
+        espEnabled = value
+
         if value then
+            enableESP()
             WindUI:Notify({
-                Title = "Auto Reset Ativado!",
-                Content = "Personagem será resetado a cada 4 minutos",
+                Title = "ESP Ativado",
+                Content = "ESP leve ligado",
                 Duration = 3
             })
-            
-            -- Iniciar loop de reset
-            autoResetLoop = task.spawn(function()
-                while autoResetEnabled do
-                    wait(240) -- 4 minutos = 240 segundos
-                    
-                    if autoResetEnabled then
-                        local player = game.Players.LocalPlayer
-                        if player.Character and player.Character:FindFirstChild("Humanoid") then
-                            player.Character.Humanoid.Health = 0
-                            WindUI:Notify({
-                                Title = "Auto Reset",
-                                Content = "Personagem resetado!",
-                                Duration = 2
-                            })
-                        end
-                    end
-                end
-            end)
         else
-            autoResetEnabled = false
+            disableESP()
             WindUI:Notify({
-                Title = "Auto Reset Desativado!",
-                Content = "Reset automático cancelado",
+                Title = "ESP Desativado",
+                Content = "ESP desligado",
                 Duration = 3
             })
         end
     end
 })
 
--- Botão de Reset Manual
-UtilSection:Button({
-    Title = "Reset Manual",
-    Description = "Reseta o personagem imediatamente",
-    Callback = function()
-        local player = game.Players.LocalPlayer
-        if player.Character and player.Character:FindFirstChild("Humanoid") then
-            player.Character.Humanoid.Health = 0
-            WindUI:Notify({
-                Title = "Reset Manual",
-                Content = "Personagem resetado!",
-                Duration = 2
-            })
-        end
-    end
-})
-
--- Notificação inicial
+-- ==================== NOTIFICAÇÃO FINAL ====================
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
     Content = "Script desenvolvido por yPedroX",
