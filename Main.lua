@@ -23,7 +23,7 @@ Window:Tag({
 -- ==================== ABA PERFORMANCE ====================
 local PerformanceTab = Window:Tab({
     Title = "Principal",
-    Icon = "activity"
+    Icon = "tool-case"
 })
 
 local PerformanceSection = PerformanceTab:Section({
