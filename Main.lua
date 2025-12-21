@@ -77,7 +77,7 @@ local UtilTab = Window:Tab({
 })
 
 local UtilSection = UtilTab:Section({
-    Title = "Auto Reset",
+    Title = "Esp config",
     Closed = false
 })
 
