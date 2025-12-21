@@ -72,8 +72,8 @@ CombatSection:Button({
 
 -- ==================== ABA UTILIDADES ====================
 local UtilTab = Window:Tab({
-    Title = "Utilidades",
-    Icon = "tool"
+    Title = "Esp",
+    Icon = "brush"
 })
 
 local UtilSection = UtilTab:Section({
