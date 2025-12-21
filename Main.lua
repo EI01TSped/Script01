@@ -28,7 +28,7 @@ local PerformanceTab = Window:Tab({
 
 local PerformanceSection = PerformanceTab:Section({
     Title = "Otimização",
-    Closed = false
+    Closed = true
 })
 
 -- Anti Lag TSB
