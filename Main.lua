@@ -3,7 +3,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- Cria a janela do Hub
 local Window = Rayfield:CreateWindow({
-    Name = "ESP Hub",
+    Name = "ESPzao Hub",
     LoadingTitle = "ESP Rayfield",
     LoadingSubtitle = "by SeuNome",
     ConfigurationSaving = {
