@@ -1,13 +1,15 @@
 -- Ped V1 Script
--- Carregando Wind UI
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+-- Wind UI
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
 
 -- Serviços
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
--- Criar janela
+-- ==================== WINDOW ====================
 local Window = WindUI:CreateWindow({
     Title = "Ped V1",
     Subtitle = "by yPedroX",
@@ -26,30 +28,6 @@ Window:Tag({
     Radius = 0,
 })
 
--- ==================== ABA PRINCIPAL ====================
-local PerformanceTab = Window:Tab({
-    Title = "Principal",
-    Icon = "tool-case"
-})
-
-local PerformanceSection = PerformanceTab:Section({
-    Title = "Otimização",
-    Closed = true
-})
-
-PerformanceSection:Button({
-    Title = "Anti Lag TSB",
-    Description = "Remove lag do The Strongest Battlegrounds",
-    Callback = function()
-        loadstring(game:HttpGet("https://rawscripts.net/raw/The-Strongest-Battlegrounds-Antilag-TSB-18306"))()
-        WindUI:Notify({
-            Title = "Anti Lag Ativado!",
-            Content = "Otimização aplicada ao jogo",
-            Duration = 3
-        })
-    end
-})
-
 -- ==================== ABA COMBATE ====================
 local CombatTab = Window:Tab({
     Title = "Combate",
@@ -57,20 +35,59 @@ local CombatTab = Window:Tab({
 })
 
 local CombatSection = CombatTab:Section({
-    Title = "Assistência de Mira",
+    Title = "Assistência",
     Closed = false
 })
 
+-- Aimlock
 CombatSection:Button({
     Title = "Aimlock",
-    Description = "Gruda a câmera no inimigo mais próximo",
+    Description = "Gruda a câmera no inimigo",
     Callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/Aepione/Prensado/refs/heads/main/Prensado%20camlock"))()
-        WindUI:Notify({
-            Title = "Aimlock Carregado!",
-            Content = "Sistema de mira ativado",
-            Duration = 3
-        })
+        loadstring(game:HttpGet(
+            "https://raw.githubusercontent.com/Aepione/Prensado/refs/heads/main/Prensado%20camlock"
+        ))()
+    end
+})
+
+-- ==================== SKILL CHECK (NUNCA ERRAR) ====================
+local skillCheckEnabled = false
+local oldNamecall
+local mt = getrawmetatable(game)
+
+CombatSection:Toggle({
+    Title = "Auto Skill Check (Nunca Errar)",
+    Description = "Sempre acerta o skill check do Generator",
+    Default = false,
+    Callback = function(v)
+        skillCheckEnabled = v
+
+        if v then
+            setreadonly(mt, false)
+            oldNamecall = mt.__namecall
+
+            mt.__namecall = newcclosure(function(self, ...)
+                local args = {...}
+                local method = getnamecallmethod()
+
+                if skillCheckEnabled
+                    and method == "FireServer"
+                    and tostring(self) == "SkillCheckResultEvent" then
+                    args[1] = true -- força acerto
+                    return oldNamecall(self, unpack(args))
+                end
+
+                return oldNamecall(self, ...)
+            end)
+
+            setreadonly(mt, true)
+        else
+            if oldNamecall then
+                setreadonly(mt, false)
+                mt.__namecall = oldNamecall
+                setreadonly(mt, true)
+            end
+        end
     end
 })
 
@@ -85,11 +102,11 @@ local EspSection = EspTab:Section({
     Closed = false
 })
 
--- ==================== VARIÁVEIS ====================
-local espPlayersEnabled = false
-local espKillerEnabled = false
-local espGeneratorEnabled = false
-local espGiftEnabled = false
+-- ==================== VARIÁVEIS ESP ====================
+local espPlayers = false
+local espKiller = false
+local espGenerator = false
+local espGift = false
 
 local espCache = {}
 local generatorESP = {}
@@ -123,20 +140,20 @@ local function applyPlayerESP(player, color)
     highlight.Parent = char
 
     local billboard = Instance.new("BillboardGui")
-    billboard.Size = UDim2.new(0, 120, 0, 22)
-    billboard.StudsOffset = Vector3.new(0, 2.3, 0)
-    billboard.AlwaysOnTop = true
     billboard.Adornee = head
+    billboard.Size = UDim2.fromOffset(110, 18) -- tamanho fixo
+    billboard.StudsOffset = Vector3.new(0, 2.2, 0)
+    billboard.AlwaysOnTop = true
     billboard.Parent = head
 
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, 0, 1, 0)
+    text.Size = UDim2.fromScale(1, 1)
     text.BackgroundTransparency = 1
     text.Text = player.Name
-    text.TextScaled = true
-    text.Font = Enum.Font.GothamBold
     text.TextColor3 = color
-    text.TextStrokeTransparency = 0.5
+    text.TextSize = 14 -- FIXO (não cresce com distância)
+    text.Font = Enum.Font.Gotham -- fonte fina
+    text.TextStrokeTransparency = 0.8
     text.Parent = billboard
 
     espCache[player] = {highlight, billboard}
@@ -164,15 +181,15 @@ local function scanModels(name, color, cache)
     end
 end
 
--- ==================== TOGGLES ====================
+-- ==================== TOGGLES ESP ====================
 EspSection:Toggle({
     Title = "ESP Players (Verde)",
     Default = false,
     Callback = function(v)
-        espPlayersEnabled = v
+        espPlayers = v
         for _, p in ipairs(Players:GetPlayers()) do
-            if espKillerEnabled and p.Team and p.Team.Name == "Killer" then
-                -- Killer tem prioridade
+            if espKiller and p.Team and p.Team.Name == "Killer" then
+                -- prioridade Killer
             elseif v then
                 applyPlayerESP(p, Color3.fromRGB(0,255,0))
             else
@@ -186,7 +203,7 @@ EspSection:Toggle({
     Title = "ESP Killer (Vermelho)",
     Default = false,
     Callback = function(v)
-        espKillerEnabled = v
+        espKiller = v
         for _, p in ipairs(Players:GetPlayers()) do
             if p.Team and p.Team.Name == "Killer" then
                 if v then
@@ -203,7 +220,7 @@ EspSection:Toggle({
     Title = "ESP Generator (Amarelo)",
     Default = false,
     Callback = function(v)
-        espGeneratorEnabled = v
+        espGenerator = v
         if v then
             scanModels("Generator", Color3.fromRGB(255,255,0), generatorESP)
         else
@@ -214,12 +231,12 @@ EspSection:Toggle({
 })
 
 EspSection:Toggle({
-    Title = "ESP Gift (Azul Escuro)",
+    Title = "ESP Gift (Azul)",
     Default = false,
     Callback = function(v)
-        espGiftEnabled = v
+        espGift = v
         if v then
-            scanModels("Gift", Color3.fromRGB(0, 70, 160), giftESP)
+            scanModels("Gift", Color3.fromRGB(0,70,160), giftESP)
         else
             for _, h in pairs(giftESP) do if h.Parent then h:Destroy() end end
             giftESP = {}
@@ -227,23 +244,33 @@ EspSection:Toggle({
     end
 })
 
--- ==================== EVENTOS ====================
+-- ==================== EVENTOS (ANTI SUMIR ESP) ====================
+local function refreshPlayer(player)
+    task.wait(0.8)
+    if espKiller and player.Team and player.Team.Name == "Killer" then
+        applyPlayerESP(player, Color3.fromRGB(255,0,0))
+    elseif espPlayers then
+        applyPlayerESP(player, Color3.fromRGB(0,255,0))
+    end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+    p.CharacterAdded:Connect(function()
+        refreshPlayer(p)
+    end)
+end
+
 Players.PlayerAdded:Connect(function(player)
     player.CharacterAdded:Connect(function()
-        task.wait(1)
-        if espKillerEnabled and player.Team and player.Team.Name == "Killer" then
-            applyPlayerESP(player, Color3.fromRGB(255,0,0))
-        elseif espPlayersEnabled then
-            applyPlayerESP(player, Color3.fromRGB(0,255,0))
-        end
+        refreshPlayer(player)
     end)
 end)
 
 Workspace.DescendantAdded:Connect(function(obj)
-    if espGeneratorEnabled and obj:IsA("Model") and obj.Name == "Generator" then
+    if espGenerator and obj:IsA("Model") and obj.Name == "Generator" then
         applyObjectESP(obj, Color3.fromRGB(255,255,0), generatorESP)
     end
-    if espGiftEnabled and obj:IsA("Model") and obj.Name == "Gift" then
+    if espGift and obj:IsA("Model") and obj.Name == "Gift" then
         applyObjectESP(obj, Color3.fromRGB(0,70,160), giftESP)
     end
 end)
@@ -251,8 +278,8 @@ end)
 -- ==================== FINAL ====================
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
-    Content = "ESP avançado carregado sem conflitos",
-    Duration = 7
+    Content = "Script carregado com sucesso",
+    Duration = 6
 })
 
 print("Ped V1 carregado com sucesso")
