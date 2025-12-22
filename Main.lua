@@ -36,7 +36,7 @@ local CombatTab = Window:Tab({
 })
 
 local CombatSection = CombatTab:Section({
-    Title = "Assistência",
+    Title = "Funçoes",
     Closed = false
 })
 
