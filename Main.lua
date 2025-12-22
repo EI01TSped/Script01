@@ -31,7 +31,7 @@ Window:Tag({
 
 -- ==================== ABA COMBATE ====================
 local CombatTab = Window:Tab({
-    Title = "Combate",
+    Title = "Killer",
     Icon = "crosshair"
 })
 
