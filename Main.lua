@@ -7,6 +7,7 @@ local WindUI = loadstring(game:HttpGet(
 -- Serviços
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== WINDOW ====================
@@ -39,7 +40,6 @@ local CombatSection = CombatTab:Section({
     Closed = false
 })
 
--- Aimlock
 CombatSection:Button({
     Title = "Aimlock",
     Description = "Gruda a câmera no inimigo",
@@ -50,7 +50,7 @@ CombatSection:Button({
     end
 })
 
--- ==================== SKILL CHECK (NUNCA ERRAR) ====================
+-- ==================== SKILL CHECK ====================
 local skillCheckEnabled = false
 local oldNamecall
 local mt = getrawmetatable(game)
@@ -73,7 +73,7 @@ CombatSection:Toggle({
                 if skillCheckEnabled
                     and method == "FireServer"
                     and tostring(self) == "SkillCheckResultEvent" then
-                    args[1] = true -- força acerto
+                    args[1] = true
                     return oldNamecall(self, unpack(args))
                 end
 
@@ -102,183 +102,110 @@ local EspSection = EspTab:Section({
     Closed = false
 })
 
--- ==================== VARIÁVEIS ESP ====================
-local espPlayers = false
-local espKiller = false
+-- ==================== VARIÁVEIS ====================
 local espGenerator = false
-local espGift = false
-
-local espCache = {}
 local generatorESP = {}
-local giftESP = {}
 
--- ==================== FUNÇÕES PLAYER ESP ====================
-local function clearESP(player)
-    if espCache[player] then
-        for _, obj in ipairs(espCache[player]) do
-            if obj and obj.Parent then obj:Destroy() end
-        end
-        espCache[player] = nil
+-- ==================== FUNÇÃO % ====================
+local function getGeneratorPercent(model)
+    local value = model:GetAttribute("RepairProgress")
+    if typeof(value) ~= "number" then return "0%" end
+
+    if value <= 1 then
+        return math.floor(value * 100) .. "%"
+    else
+        return math.floor(value) .. "%"
     end
 end
 
-local function applyPlayerESP(player, color)
-    if player == LocalPlayer then return end
-    if not player.Character then return end
-
-    clearESP(player)
-
-    local char = player.Character
-    local head = char:FindFirstChild("Head")
-    if not head then return end
+-- ==================== ESP GENERATOR ====================
+local function applyGeneratorESP(model)
+    if generatorESP[model] then return end
 
     local highlight = Instance.new("Highlight")
     highlight.FillTransparency = 1
-    highlight.OutlineTransparency = 0.5
-    highlight.OutlineColor = color
-    highlight.Adornee = char
-    highlight.Parent = char
+    highlight.OutlineTransparency = 0.4
+    highlight.OutlineColor = Color3.fromRGB(255, 255, 0)
+    highlight.Adornee = model
+    highlight.Parent = model
+
+    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+    if not part then return end
 
     local billboard = Instance.new("BillboardGui")
-    billboard.Adornee = head
-    billboard.Size = UDim2.fromOffset(110, 18) -- tamanho fixo
-    billboard.StudsOffset = Vector3.new(0, 2.2, 0)
+    billboard.Adornee = part
+    billboard.Size = UDim2.fromOffset(120, 22)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
     billboard.AlwaysOnTop = true
-    billboard.Parent = head
+    billboard.Parent = part
 
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.fromScale(1, 1)
+    text.Size = UDim2.fromScale(1,1)
     text.BackgroundTransparency = 1
-    text.Text = player.Name
-    text.TextColor3 = color
-    text.TextSize = 14 -- FIXO (não cresce com distância)
-    text.Font = Enum.Font.Gotham -- fonte fina
-    text.TextStrokeTransparency = 0.8
+    text.TextColor3 = Color3.fromRGB(255,255,0)
+    text.TextSize = 14
+    text.Font = Enum.Font.Gotham
+    text.TextStrokeTransparency = 0.7
     text.Parent = billboard
 
-    espCache[player] = {highlight, billboard}
+    generatorESP[model] = {
+        highlight = highlight,
+        text = text
+    }
 end
 
--- ==================== ESP OBJETOS ====================
-local function applyObjectESP(model, color, cache)
-    if cache[model] then return end
-
-    local h = Instance.new("Highlight")
-    h.FillTransparency = 1
-    h.OutlineTransparency = 0.4
-    h.OutlineColor = color
-    h.Adornee = model
-    h.Parent = model
-
-    cache[model] = h
-end
-
-local function scanModels(name, color, cache)
+-- ==================== SCAN ====================
+local function scanGenerators()
     for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") and obj.Name == name then
-            applyObjectESP(obj, color, cache)
+        if obj:IsA("Model") and obj.Name == "Generator" then
+            applyGeneratorESP(obj)
         end
     end
 end
 
--- ==================== TOGGLES ESP ====================
+-- ==================== TOGGLE ====================
 EspSection:Toggle({
-    Title = "ESP Players (Verde)",
-    Default = false,
-    Callback = function(v)
-        espPlayers = v
-        for _, p in ipairs(Players:GetPlayers()) do
-            if espKiller and p.Team and p.Team.Name == "Killer" then
-                -- prioridade Killer
-            elseif v then
-                applyPlayerESP(p, Color3.fromRGB(0,255,0))
-            else
-                clearESP(p)
-            end
-        end
-    end
-})
-
-EspSection:Toggle({
-    Title = "ESP Killer (Vermelho)",
-    Default = false,
-    Callback = function(v)
-        espKiller = v
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Team and p.Team.Name == "Killer" then
-                if v then
-                    applyPlayerESP(p, Color3.fromRGB(255,0,0))
-                else
-                    clearESP(p)
-                end
-            end
-        end
-    end
-})
-
-EspSection:Toggle({
-    Title = "ESP Generator (Amarelo)",
+    Title = "ESP Generator (Amarelo + %)",
     Default = false,
     Callback = function(v)
         espGenerator = v
+
         if v then
-            scanModels("Generator", Color3.fromRGB(255,255,0), generatorESP)
+            scanGenerators()
         else
-            for _, h in pairs(generatorESP) do if h.Parent then h:Destroy() end end
+            for _, data in pairs(generatorESP) do
+                if data.highlight then data.highlight:Destroy() end
+                if data.text and data.text.Parent then
+                    data.text.Parent:Destroy()
+                end
+            end
             generatorESP = {}
         end
     end
 })
 
-EspSection:Toggle({
-    Title = "ESP Gift (Azul)",
-    Default = false,
-    Callback = function(v)
-        espGift = v
-        if v then
-            scanModels("Gift", Color3.fromRGB(0,70,160), giftESP)
-        else
-            for _, h in pairs(giftESP) do if h.Parent then h:Destroy() end end
-            giftESP = {}
+-- ==================== UPDATE % TEMPO REAL ====================
+RunService.RenderStepped:Connect(function()
+    if not espGenerator then return end
+
+    for model, data in pairs(generatorESP) do
+        if model and model.Parent and data.text then
+            data.text.Text = "Generator [" .. getGeneratorPercent(model) .. "]"
         end
     end
-})
-
--- ==================== EVENTOS (ANTI SUMIR ESP) ====================
-local function refreshPlayer(player)
-    task.wait(0.8)
-    if espKiller and player.Team and player.Team.Name == "Killer" then
-        applyPlayerESP(player, Color3.fromRGB(255,0,0))
-    elseif espPlayers then
-        applyPlayerESP(player, Color3.fromRGB(0,255,0))
-    end
-end
-
-for _, p in ipairs(Players:GetPlayers()) do
-    p.CharacterAdded:Connect(function()
-        refreshPlayer(p)
-    end)
-end
-
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        refreshPlayer(player)
-    end)
 end)
 
 Workspace.DescendantAdded:Connect(function(obj)
     if espGenerator and obj:IsA("Model") and obj.Name == "Generator" then
-        applyObjectESP(obj, Color3.fromRGB(255,255,0), generatorESP)
-    end
-    if espGift and obj:IsA("Model") and obj.Name == "Gift" then
-        applyObjectESP(obj, Color3.fromRGB(0,70,160), giftESP)
+        task.wait(0.3)
+        applyGeneratorESP(obj)
     end
 end)
 
 -- ==================== FINAL ====================
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
-    Content = "Script carregado com sucesso",
+    Content = "ESP Generator com porcentagem ativo!",
     Duration = 6
 })
 
