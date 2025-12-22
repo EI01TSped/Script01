@@ -25,7 +25,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.0",
+    Title = "v1.2",
     Icon = "github",
     Color = Color3.fromHex("#30ff6a"),
     Radius = 0,
@@ -107,7 +107,7 @@ local EspTab = Window:Tab({
 })
 
 local EspSection = EspTab:Section({
-    Title = "ESP Config",
+    Title = "ESP Config [BETA]",
     Closed = false
 })
 
