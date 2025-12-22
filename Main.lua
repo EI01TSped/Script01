@@ -36,13 +36,13 @@ local CombatTab = Window:Tab({
 })
 
 local CombatSection = CombatTab:Section({
-    Title = "Funçoes",
+    Title = "Funções",
     Closed = false
 })
 
 CombatSection:Button({
     Title = "Aimlock",
-    Description = "Gruda a câmera no inimigo",
+    Desc = "Trava a câmera automaticamente no inimigo",
     Callback = function()
         loadstring(game:HttpGet(
             "https://raw.githubusercontent.com/Aepione/Prensado/refs/heads/main/Prensado%20camlock"
@@ -68,7 +68,7 @@ local mt = getrawmetatable(game)
 
 SurvivorSection:Toggle({
     Title = "Auto Skill Check (Nunca Errar)",
-    Description = "Sempre acerta o skill check do Generator",
+    Desc = "Acerta automaticamente todos os skill checks dos geradores",
     Default = false,
     Callback = function(v)
         skillCheckEnabled = v
@@ -170,20 +170,6 @@ local function applyPlayerESP(player, color)
     espCache[player] = {highlight, billboard}
 end
 
--- ==================== OBJECT ESP ====================
-local function applyObjectESP(model, color, cache)
-    if cache[model] then return end
-
-    local h = Instance.new("Highlight")
-    h.FillTransparency = 1
-    h.OutlineTransparency = 0.4
-    h.OutlineColor = color
-    h.Adornee = model
-    h.Parent = model
-
-    cache[model] = h
-end
-
 -- ==================== GERADOR % ====================
 local function getGeneratorPercent(model)
     local v = model:GetAttribute("RepairProgress")
@@ -194,36 +180,10 @@ local function getGeneratorPercent(model)
     return math.floor(v) .. "%"
 end
 
-local function applyGeneratorESP(model)
-    if generatorESP[model] then return end
-
-    applyObjectESP(model, Color3.fromRGB(255,255,0), generatorESP)
-
-    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
-    if not part then return end
-
-    local gui = Instance.new("BillboardGui")
-    gui.Adornee = part
-    gui.Size = UDim2.fromOffset(130, 22)
-    gui.StudsOffset = Vector3.new(0, 3, 0)
-    gui.AlwaysOnTop = true
-    gui.Parent = part
-
-    local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.fromScale(1,1)
-    txt.BackgroundTransparency = 1
-    txt.TextColor3 = Color3.fromRGB(255,255,0)
-    txt.TextSize = 14
-    txt.Font = Enum.Font.Gotham
-    txt.TextStrokeTransparency = 0.7
-    txt.Parent = gui
-
-    generatorESP[model] = {h = generatorESP[model], gui = gui, txt = txt}
-end
-
 -- ==================== TOGGLES ESP ====================
 EspSection:Toggle({
     Title = "ESP Players (Verde)",
+    Desc = "Mostra todos os sobreviventes em verde",
     Default = false,
     Callback = function(v)
         espPlayers = v
@@ -241,6 +201,7 @@ EspSection:Toggle({
 
 EspSection:Toggle({
     Title = "ESP Killer (Vermelho)",
+    Desc = "Destaca o Killer em vermelho",
     Default = false,
     Callback = function(v)
         espKiller = v
@@ -258,54 +219,21 @@ EspSection:Toggle({
 
 EspSection:Toggle({
     Title = "ESP Generator (Amarelo + %)",
+    Desc = "Mostra os geradores com progresso em porcentagem",
     Default = false,
     Callback = function(v)
         espGenerator = v
-        if v then
-            for _, o in ipairs(Workspace:GetDescendants()) do
-                if o:IsA("Model") and o.Name == "Generator" then
-                    applyGeneratorESP(o)
-                end
-            end
-        else
-            for _, d in pairs(generatorESP) do
-                if d.gui then d.gui:Destroy() end
-                if d.h then d.h:Destroy() end
-            end
-            generatorESP = {}
-        end
     end
 })
 
 EspSection:Toggle({
     Title = "ESP Gift (Azul)",
+    Desc = "Destaca os Gifts no mapa em azul escuro",
     Default = false,
     Callback = function(v)
         espGift = v
-        if v then
-            for _, o in ipairs(Workspace:GetDescendants()) do
-                if o:IsA("Model") and o.Name == "Gift" then
-                    applyObjectESP(o, Color3.fromRGB(0,70,160), giftESP)
-                end
-            end
-        else
-            for _, h in pairs(giftESP) do
-                if h.Parent then h:Destroy() end
-            end
-            giftESP = {}
-        end
     end
 })
-
--- ==================== UPDATE % ====================
-RunService.RenderStepped:Connect(function()
-    if not espGenerator then return end
-    for model, d in pairs(generatorESP) do
-        if d.txt and model then
-            d.txt.Text = "Generator [" .. getGeneratorPercent(model) .. "]"
-        end
-    end
-end)
 
 -- ==================== FINAL ====================
 WindUI:Notify({
