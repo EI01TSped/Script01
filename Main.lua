@@ -10,6 +10,8 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
+local MAX_DISTANCE = 600
+
 -- ==================== WINDOW ====================
 local Window = WindUI:CreateWindow({
     Title = "Ped V1",
@@ -29,7 +31,7 @@ Window:Tag({
     Radius = 0,
 })
 
--- ==================== ABA COMBATE ====================
+-- ==================== ABA KILLER ====================
 local CombatTab = Window:Tab({
     Title = "Killer",
     Icon = "sword"
@@ -61,14 +63,14 @@ local SurvivorSection = SurvivorTab:Section({
     Closed = false
 })
 
--- ==================== SKILL CHECK (NUNCA ERRAR) ====================
+-- ==================== AUTO SKILL CHECK ====================
 local skillCheckEnabled = false
 local oldNamecall
 local mt = getrawmetatable(game)
 
 SurvivorSection:Toggle({
     Title = "Auto Skill Check (Nunca Errar)",
-    Desc = "Acerta automaticamente todos os skill checks dos geradores",
+    Desc = "Acerta automaticamente todos os skill checks",
     Default = false,
     Callback = function(v)
         skillCheckEnabled = v
@@ -81,8 +83,7 @@ SurvivorSection:Toggle({
                 local args = {...}
                 local method = getnamecallmethod()
 
-                if skillCheckEnabled
-                    and method == "FireServer"
+                if method == "FireServer"
                     and tostring(self) == "SkillCheckResultEvent" then
                     args[1] = true
                     return oldNamecall(self, unpack(args))
@@ -113,61 +114,48 @@ local EspSection = EspTab:Section({
     Closed = false
 })
 
--- ==================== VARIÁVEIS ESP ====================
-local espPlayers = false
-local espKiller = false
-local espGenerator = false
-local espGift = false
-
-local espCache = {}
+-- ==================== VARIÁVEIS ====================
+local espPlayers, espKiller, espGenerator, espGift = false, false, false, false
+local playerESP = {}
 local generatorESP = {}
 local giftESP = {}
 
+-- ==================== FUNÇÕES ÚTEIS ====================
+local function getRoot()
+    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function inDistance(pos)
+    local root = getRoot()
+    if not root then return false end
+    return (root.Position - pos).Magnitude <= MAX_DISTANCE
+end
+
 -- ==================== PLAYER ESP ====================
-local function clearESP(player)
-    if espCache[player] then
-        for _, v in ipairs(espCache[player]) do
-            if v and v.Parent then v:Destroy() end
+local function clearPlayerESP(player)
+    if playerESP[player] then
+        for _, v in pairs(playerESP[player]) do
+            if v then v:Destroy() end
         end
-        espCache[player] = nil
+        playerESP[player] = nil
     end
 end
 
 local function applyPlayerESP(player, color)
-    if player == LocalPlayer then return end
-    if not player.Character then return end
+    if player == LocalPlayer or not player.Character then return end
+    if playerESP[player] then return end
 
-    clearESP(player)
+    local root = player.Character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
 
-    local char = player.Character
-    local head = char:FindFirstChild("Head")
-    if not head then return end
+    local h = Instance.new("Highlight")
+    h.FillTransparency = 1
+    h.OutlineTransparency = 0.4
+    h.OutlineColor = color
+    h.Adornee = player.Character
+    h.Parent = player.Character
 
-    local highlight = Instance.new("Highlight")
-    highlight.FillTransparency = 1
-    highlight.OutlineTransparency = 0.5
-    highlight.OutlineColor = color
-    highlight.Adornee = char
-    highlight.Parent = char
-
-    local billboard = Instance.new("BillboardGui")
-    billboard.Adornee = head
-    billboard.Size = UDim2.fromOffset(110, 18)
-    billboard.StudsOffset = Vector3.new(0, 2.2, 0)
-    billboard.AlwaysOnTop = true
-    billboard.Parent = head
-
-    local text = Instance.new("TextLabel")
-    text.Size = UDim2.fromScale(1,1)
-    text.BackgroundTransparency = 1
-    text.Text = player.Name
-    text.TextColor3 = color
-    text.TextSize = 14
-    text.Font = Enum.Font.Gotham
-    text.TextStrokeTransparency = 0.8
-    text.Parent = billboard
-
-    espCache[player] = {highlight, billboard}
+    playerESP[player] = {h}
 end
 
 -- ==================== GERADOR % ====================
@@ -180,65 +168,78 @@ local function getGeneratorPercent(model)
     return math.floor(v) .. "%"
 end
 
--- ==================== TOGGLES ESP ====================
-EspSection:Toggle({
-    Title = "ESP Players (Verde)",
-    Desc = "Mostra todos os sobreviventes em verde",
-    Default = false,
-    Callback = function(v)
-        espPlayers = v
-        for _, p in ipairs(Players:GetPlayers()) do
-            if not (espKiller and p.Team and p.Team.Name == "Killer") then
-                if v then
-                    applyPlayerESP(p, Color3.fromRGB(0,255,0))
-                else
-                    clearESP(p)
-                end
-            end
-        end
-    end
-})
+local function applyGeneratorESP(model)
+    if generatorESP[model] then return end
 
-EspSection:Toggle({
-    Title = "ESP Killer (Vermelho)",
-    Desc = "Destaca o Killer em vermelho",
-    Default = false,
-    Callback = function(v)
-        espKiller = v
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p.Team and p.Team.Name == "Killer" then
-                if v then
-                    applyPlayerESP(p, Color3.fromRGB(255,0,0))
-                else
-                    clearESP(p)
-                end
-            end
-        end
-    end
-})
+    local h = Instance.new("Highlight")
+    h.FillTransparency = 1
+    h.OutlineTransparency = 0.4
+    h.OutlineColor = Color3.fromRGB(255,255,0)
+    h.Adornee = model
+    h.Parent = model
 
+    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+    if not part then return end
+
+    local gui = Instance.new("BillboardGui")
+    gui.Adornee = part
+    gui.Size = UDim2.fromOffset(120,22)
+    gui.StudsOffset = Vector3.new(0,3,0)
+    gui.AlwaysOnTop = true
+    gui.Parent = part
+
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.fromScale(1,1)
+    txt.BackgroundTransparency = 1
+    txt.TextColor3 = Color3.fromRGB(255,255,0)
+    txt.TextSize = 14
+    txt.Font = Enum.Font.Gotham
+    txt.TextStrokeTransparency = 0.7
+    txt.Parent = gui
+
+    generatorESP[model] = {h = h, gui = gui, txt = txt}
+end
+
+-- ==================== TOGGLES ====================
 EspSection:Toggle({
     Title = "ESP Generator (Amarelo + %)",
-    Desc = "Mostra os geradores com progresso em porcentagem",
-    Default = false,
+    Desc = "Mostra geradores próximos com progresso",
     Callback = function(v)
         espGenerator = v
+        if not v then
+            for _, d in pairs(generatorESP) do
+                if d.h then d.h:Destroy() end
+                if d.gui then d.gui:Destroy() end
+            end
+            generatorESP = {}
+        end
     end
 })
 
-EspSection:Toggle({
-    Title = "ESP Gift (Azul)",
-    Desc = "Destaca os Gifts no mapa em azul escuro",
-    Default = false,
-    Callback = function(v)
-        espGift = v
+-- ==================== UPDATE GLOBAL ====================
+RunService.RenderStepped:Connect(function()
+    if espGenerator then
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj.Name == "Generator" then
+                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                if part and inDistance(part.Position) then
+                    applyGeneratorESP(obj)
+                    generatorESP[obj].txt.Text =
+                        "Generator [" .. getGeneratorPercent(obj) .. "]"
+                elseif generatorESP[obj] then
+                    generatorESP[obj].h:Destroy()
+                    generatorESP[obj].gui:Destroy()
+                    generatorESP[obj] = nil
+                end
+            end
+        end
     end
-})
+end)
 
 -- ==================== FINAL ====================
 WindUI:Notify({
-    Title = "Ped V1 Carregado!",
-    Content = "Script carregado com sucesso",
+    Title = "Ped V1",
+    Content = "ESP com limite de 600 studs ativo",
     Duration = 6
 })
 
