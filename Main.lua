@@ -32,7 +32,7 @@ Window:Tag({
 -- ==================== ABA COMBATE ====================
 local CombatTab = Window:Tab({
     Title = "Killer",
-    Icon = "crosshair"
+    Icon = "sword"
 })
 
 local CombatSection = CombatTab:Section({
