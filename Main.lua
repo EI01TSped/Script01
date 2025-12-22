@@ -239,7 +239,7 @@ end)
 -- ==================== FINAL ====================
 WindUI:Notify({
     Title = "Ped V1",
-    Content = "ESP com limite de 600 studs ativo",
+    Content = "Violence district - [BETA]",
     Duration = 6
 })
 
