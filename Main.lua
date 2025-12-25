@@ -1,4 +1,4 @@
--- Ped V1 Script
+-- Ped V1 Script (Optimized)
 -- Wind UI
 local WindUI = loadstring(game:HttpGet(
     "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
@@ -12,6 +12,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ==================== CONFIG ====================
 local MAX_DISTANCE = 600
+local UPDATE_RATE = 0.5 -- Aumentado de 0.25 para reduzir processamento
 
 local function getHRP()
     local c = LocalPlayer.Character
@@ -19,8 +20,10 @@ local function getHRP()
 end
 
 local function inDistance(part)
+    if not part or not part.Parent then return false end
     local hrp = getHRP()
-    return hrp and (hrp.Position - part.Position).Magnitude <= MAX_DISTANCE
+    if not hrp then return false end
+    return (hrp.Position - part.Position).Magnitude <= MAX_DISTANCE
 end
 
 -- ==================== WINDOW ====================
@@ -34,7 +37,7 @@ local Window = WindUI:CreateWindow({
 })
 
 Window:Tag({
-    Title = "v1.0",
+    Title = "v1.0 Optimized",
     Icon = "github",
     Color = Color3.fromHex("#30ff6a"),
 })
@@ -75,6 +78,7 @@ local SurvivorSection = SurvivorTab:Section({
 local skillCheckEnabled = false
 local oldNamecall
 local mt = getrawmetatable(game)
+setreadonly(mt, false)
 
 SurvivorSection:Toggle({
     Title = "Auto Skill Check (Nunca Errar)",
@@ -82,31 +86,26 @@ SurvivorSection:Toggle({
     Callback = function(v)
         skillCheckEnabled = v
 
-        if v then
-            setreadonly(mt, false)
+        if v and not oldNamecall then
             oldNamecall = mt.__namecall
 
             mt.__namecall = newcclosure(function(self, ...)
+                local method = getnamecallmethod()
                 local args = {...}
-                if getnamecallmethod() == "FireServer"
-                and tostring(self) == "SkillCheckResultEvent"
+                
+                if method == "FireServer" 
+                and tostring(self) == "SkillCheckResultEvent" 
                 and skillCheckEnabled then
                     args[1] = true
-                    return oldNamecall(self, unpack(args))
                 end
-                return oldNamecall(self, ...)
+                
+                return oldNamecall(self, unpack(args))
             end)
-
-            setreadonly(mt, true)
-        else
-            if oldNamecall then
-                setreadonly(mt, false)
-                mt.__namecall = oldNamecall
-                setreadonly(mt, true)
-            end
         end
     end
 })
+
+setreadonly(mt, true)
 
 -- ==================== ABA ESP ====================
 local EspTab = Window:Tab({
@@ -129,49 +128,83 @@ local playerESP = {}
 local generatorESP = {}
 local giftESP = {}
 
--- ==================== PLAYER ESP ====================
-local function applyPlayerESP(player, color)
-    if player == LocalPlayer or not player.Character then return end
-    if playerESP[player] then return end
-
-    local char = player.Character
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local head = char:FindFirstChild("Head")
-    if not hrp or not head then return end
-
-    local hl = Instance.new("Highlight")
-    hl.FillTransparency = 1
-    hl.OutlineColor = color
-    hl.Parent = char
-
-    local bb = Instance.new("BillboardGui")
-    bb.Adornee = head
-    bb.Size = UDim2.fromOffset(110, 18)
-    bb.StudsOffset = Vector3.new(0, 2.2, 0)
-    bb.AlwaysOnTop = true
-    bb.Parent = head
-
-    local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.fromScale(1,1)
-    txt.BackgroundTransparency = 1
-    txt.Text = player.Name
-    txt.TextColor3 = color
-    txt.Font = Enum.Font.Gotham
-    txt.TextSize = 14
-    txt.TextStrokeTransparency = 0.7
-    txt.Parent = bb
-
-    playerESP[player] = {hl = hl, bb = bb, part = hrp}
+-- ==================== LIMPEZA DE ESP ====================
+local function clearESP(espTable, obj)
+    local data = espTable[obj]
+    if data then
+        if data.hl and data.hl.Parent then data.hl:Destroy() end
+        if data.bb and data.bb.Parent then data.bb:Destroy() end
+        espTable[obj] = nil
+    end
 end
 
--- ==================== GENERATOR % ====================
+-- ==================== PLAYER ESP ====================
+local function applyPlayerESP(player)
+    if player == LocalPlayer then return end
+    
+    local function setupESP()
+        local char = player.Character
+        if not char then return end
+        
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if not hrp or not head then return end
+
+        -- Remove ESP antigo se existir
+        clearESP(playerESP, player)
+
+        -- Determina cor baseado no time
+        local isKiller = player.Team and player.Team.Name == "Killer"
+        local color = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
+
+        local hl = Instance.new("Highlight")
+        hl.FillTransparency = 1
+        hl.OutlineColor = color
+        hl.OutlineTransparency = 0
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.Enabled = false
+        hl.Parent = char
+
+        local bb = Instance.new("BillboardGui")
+        bb.Adornee = head
+        bb.Size = UDim2.fromOffset(110, 18)
+        bb.StudsOffset = Vector3.new(0, 2.2, 0)
+        bb.AlwaysOnTop = true
+        bb.Enabled = false
+        bb.Parent = head
+
+        local txt = Instance.new("TextLabel")
+        txt.Size = UDim2.fromScale(1, 1)
+        txt.BackgroundTransparency = 1
+        txt.Text = player.Name
+        txt.TextColor3 = color
+        txt.Font = Enum.Font.GothamBold
+        txt.TextSize = 14
+        txt.TextStrokeTransparency = 0.5
+        txt.Parent = bb
+
+        playerESP[player] = {
+            hl = hl, 
+            bb = bb, 
+            part = hrp, 
+            isKiller = isKiller,
+            lastUpdate = 0
+        }
+    end
+
+    if player.Character then
+        setupESP()
+    end
+
+    player.CharacterAdded:Connect(setupESP)
+end
+
+-- ==================== GENERATOR ESP ====================
 local function getGeneratorPercent(model)
     local v = model:GetAttribute("RepairProgress")
     if typeof(v) ~= "number" then return "0%" end
-    if v <= 1 then
-        return math.floor(v * 100) .. "%"
-    end
-    return math.floor(v) .. "%"
+    local percent = v <= 1 and (v * 100) or v
+    return math.floor(percent) .. "%"
 end
 
 local function applyGeneratorESP(model)
@@ -182,7 +215,10 @@ local function applyGeneratorESP(model)
 
     local hl = Instance.new("Highlight")
     hl.FillTransparency = 1
-    hl.OutlineColor = Color3.fromRGB(255,255,0)
+    hl.OutlineColor = Color3.fromRGB(255, 255, 0)
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Enabled = false
     hl.Parent = model
 
     local bb = Instance.new("BillboardGui")
@@ -190,18 +226,25 @@ local function applyGeneratorESP(model)
     bb.Size = UDim2.fromOffset(130, 22)
     bb.StudsOffset = Vector3.new(0, 3, 0)
     bb.AlwaysOnTop = true
+    bb.Enabled = false
     bb.Parent = part
 
     local txt = Instance.new("TextLabel")
-    txt.Size = UDim2.fromScale(1,1)
+    txt.Size = UDim2.fromScale(1, 1)
     txt.BackgroundTransparency = 1
-    txt.TextColor3 = Color3.fromRGB(255,255,0)
-    txt.Font = Enum.Font.Gotham
+    txt.TextColor3 = Color3.fromRGB(255, 255, 0)
+    txt.Font = Enum.Font.GothamBold
     txt.TextSize = 14
-    txt.TextStrokeTransparency = 0.7
+    txt.TextStrokeTransparency = 0.5
     txt.Parent = bb
 
-    generatorESP[model] = {hl = hl, bb = bb, txt = txt, part = part}
+    generatorESP[model] = {
+        hl = hl, 
+        bb = bb, 
+        txt = txt, 
+        part = part,
+        lastUpdate = 0
+    }
 end
 
 -- ==================== GIFT ESP ====================
@@ -213,10 +256,17 @@ local function applyGiftESP(model)
 
     local hl = Instance.new("Highlight")
     hl.FillTransparency = 1
-    hl.OutlineColor = Color3.fromRGB(0,70,160)
+    hl.OutlineColor = Color3.fromRGB(0, 150, 255)
+    hl.OutlineTransparency = 0
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.Enabled = false
     hl.Parent = model
 
-    giftESP[model] = {hl = hl, part = part}
+    giftESP[model] = {
+        hl = hl, 
+        part = part,
+        lastUpdate = 0
+    }
 end
 
 -- ==================== TOGGLES ====================
@@ -240,58 +290,103 @@ EspSection:Toggle({
     Callback = function(v) espGift = v end
 })
 
--- ==================== UPDATE LEVE (SEM LAG) ====================
-local timer = 0
+-- ==================== UPDATE OTIMIZADO ====================
+local updateTimer = 0
 RunService.Heartbeat:Connect(function(dt)
-    timer += dt
-    if timer < 0.25 then return end
-    timer = 0
+    updateTimer += dt
+    if updateTimer < UPDATE_RATE then return end
+    updateTimer = 0
 
-    for p,d in pairs(playerESP) do
-        local ok = inDistance(d.part)
-        d.hl.Enabled = ok and ((espPlayers) or (espKiller and p.Team and p.Team.Name == "Killer"))
-        d.bb.Enabled = d.hl.Enabled
-    end
-
-    for m,d in pairs(generatorESP) do
-        local ok = espGenerator and inDistance(d.part)
-        d.hl.Enabled = ok
-        d.bb.Enabled = ok
-        if ok then
-            d.txt.Text = "Generator [" .. getGeneratorPercent(m) .. "]"
+    -- Limpa ESP de objetos destruídos
+    for p, d in pairs(playerESP) do
+        if not p.Parent or not d.part.Parent then
+            clearESP(playerESP, p)
         end
     end
 
-    for _,d in pairs(giftESP) do
-        d.hl.Enabled = espGift and inDistance(d.part)
+    for m, d in pairs(generatorESP) do
+        if not m.Parent or not d.part.Parent then
+            clearESP(generatorESP, m)
+        end
+    end
+
+    for m, d in pairs(giftESP) do
+        if not m.Parent or not d.part.Parent then
+            clearESP(giftESP, m)
+        end
+    end
+
+    -- Atualiza ESP de players
+    for p, d in pairs(playerESP) do
+        if d.part and d.part.Parent then
+            local shouldShow = inDistance(d.part) and (
+                (espPlayers and not d.isKiller) or (espKiller and d.isKiller)
+            )
+            d.hl.Enabled = shouldShow
+            d.bb.Enabled = shouldShow
+        end
+    end
+
+    -- Atualiza ESP de generators
+    for m, d in pairs(generatorESP) do
+        if d.part and d.part.Parent then
+            local shouldShow = espGenerator and inDistance(d.part)
+            d.hl.Enabled = shouldShow
+            d.bb.Enabled = shouldShow
+            if shouldShow then
+                d.txt.Text = "Generator [" .. getGeneratorPercent(m) .. "]"
+            end
+        end
+    end
+
+    -- Atualiza ESP de gifts
+    for m, d in pairs(giftESP) do
+        if d.part and d.part.Parent then
+            d.hl.Enabled = espGift and inDistance(d.part)
+        end
     end
 end)
 
 -- ==================== SCAN INICIAL ====================
-for _,o in ipairs(Workspace:GetDescendants()) do
-    if o:IsA("Model") then
-        if o.Name == "Generator" then
-            applyGeneratorESP(o)
-        elseif o.Name == "Gift" then
-            applyGiftESP(o)
+task.spawn(function()
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("Model") then
+            if obj.Name == "Generator" then
+                applyGeneratorESP(obj)
+            elseif obj.Name == "Gift" then
+                applyGiftESP(obj)
+            end
         end
     end
+end)
+
+-- Monitora novos objetos
+Workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("Model") then
+        if obj.Name == "Generator" then
+            applyGeneratorESP(obj)
+        elseif obj.Name == "Gift" then
+            applyGiftESP(obj)
+        end
+    end
+end)
+
+-- Players
+for _, p in ipairs(Players:GetPlayers()) do
+    applyPlayerESP(p)
 end
 
-for _,p in ipairs(Players:GetPlayers()) do
-    applyPlayerESP(p, Color3.fromRGB(0,255,0))
-end
+Players.PlayerAdded:Connect(applyPlayerESP)
 
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Wait()
-    applyPlayerESP(p, Color3.fromRGB(0,255,0))
+Players.PlayerRemoving:Connect(function(p)
+    clearESP(playerESP, p)
 end)
 
 -- ==================== FINAL ====================
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
-    Content = "ESP funcionando + limite 600 studs (sem lag)",
+    Content = "ESP otimizado + performance melhorada",
     Duration = 6
 })
 
-print("Ped V1 carregado com sucesso")
+print("Ped V1 (Optimized) carregado com sucesso")
