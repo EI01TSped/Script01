@@ -11,19 +11,12 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== CONFIG ====================
-local MAX_DISTANCE = 600
-local UPDATE_RATE = 0.5 -- Aumentado de 0.25 para reduzir processamento
+local UPDATE_RATE = 0.5 -- Taxa de atualização do ESP
+local GENERATOR_UPDATE_RATE = 7 -- Atualiza porcentagem do gerador a cada 7 segundos
 
 local function getHRP()
     local c = LocalPlayer.Character
     return c and c:FindFirstChild("HumanoidRootPart")
-end
-
-local function inDistance(part)
-    if not part or not part.Parent then return false end
-    local hrp = getHRP()
-    if not hrp then return false end
-    return (hrp.Position - part.Position).Magnitude <= MAX_DISTANCE
 end
 
 -- ==================== WINDOW ====================
@@ -292,8 +285,12 @@ EspSection:Toggle({
 
 -- ==================== UPDATE OTIMIZADO ====================
 local updateTimer = 0
+local generatorUpdateTimer = 0
+
 RunService.Heartbeat:Connect(function(dt)
     updateTimer += dt
+    generatorUpdateTimer += dt
+    
     if updateTimer < UPDATE_RATE then return end
     updateTimer = 0
 
@@ -316,33 +313,37 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Atualiza ESP de players
+    -- Atualiza ESP de players (sem limite de distância)
     for p, d in pairs(playerESP) do
         if d.part and d.part.Parent then
-            local shouldShow = inDistance(d.part) and (
-                (espPlayers and not d.isKiller) or (espKiller and d.isKiller)
-            )
+            local shouldShow = (espPlayers and not d.isKiller) or (espKiller and d.isKiller)
             d.hl.Enabled = shouldShow
             d.bb.Enabled = shouldShow
         end
     end
 
-    -- Atualiza ESP de generators
+    -- Atualiza ESP de generators (sem limite de distância)
     for m, d in pairs(generatorESP) do
         if d.part and d.part.Parent then
-            local shouldShow = espGenerator and inDistance(d.part)
-            d.hl.Enabled = shouldShow
-            d.bb.Enabled = shouldShow
-            if shouldShow then
+            d.hl.Enabled = espGenerator
+            d.bb.Enabled = espGenerator
+            
+            -- Atualiza porcentagem apenas a cada 7 segundos
+            if espGenerator and generatorUpdateTimer >= GENERATOR_UPDATE_RATE then
                 d.txt.Text = "Generator [" .. getGeneratorPercent(m) .. "]"
             end
         end
     end
 
-    -- Atualiza ESP de gifts
+    -- Reseta timer de atualização dos generators
+    if generatorUpdateTimer >= GENERATOR_UPDATE_RATE then
+        generatorUpdateTimer = 0
+    end
+
+    -- Atualiza ESP de gifts (sem limite de distância)
     for m, d in pairs(giftESP) do
         if d.part and d.part.Parent then
-            d.hl.Enabled = espGift and inDistance(d.part)
+            d.hl.Enabled = espGift
         end
     end
 end)
@@ -385,7 +386,7 @@ end)
 -- ==================== FINAL ====================
 WindUI:Notify({
     Title = "Ped V1 Carregado!",
-    Content = "ESP otimizado + performance melhorada",
+    Content = "ESP sem limite de distância + otimizado",
     Duration = 6
 })
 
