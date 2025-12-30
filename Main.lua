@@ -1,799 +1,535 @@
--- Ped V1 Script (Optimized)
--- Wind UI
-local WindUI = loadstring(game:HttpGet(
-    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
-))()
+-- ============================================
+-- SISTEMA COMPLETO CORRIGIDO
+-- ============================================
 
--- Serviços
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
+-- Carregar Rayfield UI
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
--- ==================== CONFIG ====================
-local CONFIG = {
-    UPDATE_RATE = 0.5,
-    GENERATOR_UPDATE_RATE = 7,
-    MAX_DISTANCE = 1000, -- Distância máxima para renderizar ESP
-    ESP_FADE_DISTANCE = 800, -- Distância onde ESP começa a desaparecer
-    HIGHLIGHT_FILL = 0.1,
-    TEXT_SIZE = 14,
-    KILLER_COLOR = Color3.fromRGB(255, 50, 50),
-    SURVIVOR_COLOR = Color3.fromRGB(50, 255, 50),
-    GENERATOR_COLOR = Color3.fromRGB(255, 255, 50),
-    GIFT_COLOR = Color3.fromRGB(50, 150, 255),
-    EXIT_COLOR = Color3.fromRGB(255, 100, 255),
-    LOCKER_COLOR = Color3.fromRGB(150, 150, 255)
+-- Criar janela principal
+local Window = Rayfield:CreateWindow({
+    Name = "Survival Helper",
+    LoadingTitle = "Carregando...",
+    LoadingSubtitle = "Versão Corrigida",
+    ConfigurationSaving = { Enabled = false }
+})
+
+-- ============================================
+-- 1. SISTEMA DE TELEPORTE (JÁ FUNCIONANDO)
+-- ============================================
+local TeleportSystem = {
+    teleporting = false,
+    cooldowns = {},
+    cooldownTime = 10
 }
 
-local function getHRP()
-    local char = LocalPlayer.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
+local TeleportLocations = {
+    ["Alien Gun"] = Vector3.new(114.22046661376953, 335.4999084472656, 565.9104614257812)
+}
+
+local function teleportToLocation(locationName, position)
+    if TeleportSystem.teleporting then return end
+    
+    local Players = game:GetService("Players")
+    local player = Players.LocalPlayer
+    local character = player.Character
+    if not character then return end
+    
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if not humanoidRootPart then return end
+    
+    TeleportSystem.teleporting = true
+    local originalCFrame = humanoidRootPart.CFrame
+    
+    -- Teleportar
+    humanoidRootPart.CFrame = CFrame.new(position)
+    
+    Rayfield:Notify({
+        Title = "Teleportado!",
+        Content = locationName .. " (5 segundos)",
+        Duration = 3,
+        Image = 4483362458
+    })
+    
+    wait(5)
+    
+    -- Voltar
+    humanoidRootPart.CFrame = originalCFrame
+    
+    Rayfield:Notify({
+        Title = "Retornado!",
+        Content = "Voltou para posição original",
+        Duration = 3,
+        Image = 4483362458
+    })
+    
+    TeleportSystem.teleporting = false
 end
 
--- ==================== CACHE DE OBJETOS ====================
-local cachedGenerators = {}
-local cachedGifts = {}
-local cachedLockers = {}
-local cachedExits = {}
+-- ============================================
+-- 2. SISTEMA DE HITBOX EXPANDER CORRIGIDO
+-- ============================================
+local HitboxSystem = {
+    Enabled = false,
+    SizeMultiplier = 3.0,
+    Transparency = 0.85,
+    Color = Color3.fromRGB(255, 50, 50),
+    ExpandedMonsters = {},
+    KillersFolder = nil
+}
 
--- ==================== WINDOW ====================
-local Window = WindUI:CreateWindow({
-    Title = "Ped V1",
-    Subtitle = "Optimized by yPedroX",
-    Icon = "tv-minimal",
-    Folder = "PedV1Config",
-    Size = UDim2.fromOffset(620, 500),
-    Transparent = true,
-})
+-- Função para debug/informação
+local function debugPrint(msg)
+    print("[HITBOX] " .. msg)
+    -- Também mostrar na tela se quiser
+end
 
-Window:Tag({
-    Title = "v1.2 Optimized",
-    Icon = "zap",
-    Color = Color3.fromHex("#30ff6a"),
-})
-
--- ==================== ABA COMBATE ====================
-local CombatTab = Window:Tab({
-    Title = "Killer",
-    Icon = "sword"
-})
-
-local CombatSection = CombatTab:Section({
-    Title = "Funções de Combate",
-    Closed = false
-})
-
-local aimlockEnabled = false
-local aimlockTarget = nil
-
-CombatSection:Toggle({
-    Title = "Aimlock Local",
-    Description = "Trava a mira no inimigo mais próximo",
-    Callback = function(v)
-        aimlockEnabled = v
-        if v then
-            WindUI:Notify({
-                Title = "Aimlock Ativado",
-                Content = "Procurando alvo...",
-                Duration = 3
-            })
+-- Encontrar a pasta Killers (com letra maiúscula)
+local function findKillersFolder()
+    debugPrint("Procurando pasta Killers...")
+    
+    -- Tentar diferentes variações
+    local possibleNames = {"Killers", "killers", "Enemies", "Monsters", "Mobs"}
+    
+    for _, name in pairs(possibleNames) do
+        local folder = workspace:FindFirstChild(name)
+        if folder then
+            debugPrint("✅ Pasta encontrada: " .. name)
+            HitboxSystem.KillersFolder = folder
+            return folder
         end
     end
-})
+    
+    debugPrint("❌ Nenhuma pasta de monstros encontrada!")
+    return nil
+end
 
-CombatSection:Button({
-    Title = "Aimlock Avançado",
-    Description = "Script externo mais completo",
-    Callback = function()
-        loadstring(game:HttpGet(
-            "https://raw.githubusercontent.com/Aepione/Prensado/refs/heads/main/Prensado%20camlock"
-        ))()
+-- Expandir UM monstro específico
+local function expandSingleMonster(monster)
+    if not monster or not monster.Parent then return false end
+    
+    debugPrint("Expandindo monstro: " .. monster.Name)
+    
+    -- Verificar se é um monstro válido
+    if not monster:IsA("Model") then 
+        debugPrint("❌ Não é um Model")
+        return false 
     end
-})
-
--- ==================== VISUAL ENHANCEMENTS ====================
-local VisualTab = Window:Tab({
-    Title = "Visual",
-    Icon = "eye"
-})
-
-local VisualSection = VisualTab:Section({
-    Title = "Melhorias Visuais",
-    Closed = false
-})
-
-local brightnessValue = 1
-local fogEnabled = false
-local originalFogEnd
-
-VisualSection:Slider({
-    Title = "Brilho",
-    Description = "Ajusta o brilho do jogo",
-    Min = 0.1,
-    Max = 5,
-    Default = 1,
-    Callback = function(v)
-        brightnessValue = v
-        Lighting.Brightness = v
-    end
-})
-
-VisualSection:Toggle({
-    Title = "Remover Névoa",
-    Description = "Remove a névoa do mapa",
-    Callback = function(v)
-        fogEnabled = v
-        if v then
-            originalFogEnd = Lighting.FogEnd
-            Lighting.FogEnd = 100000
-        elseif originalFogEnd then
-            Lighting.FogEnd = originalFogEnd
+    
+    -- Listar todas as partes do monstro
+    debugPrint("Partes encontradas em " .. monster.Name .. ":")
+    for _, part in pairs(monster:GetChildren()) do
+        if part:IsA("BasePart") then
+            debugPrint("  - " .. part.Name .. " (Tamanho: " .. tostring(part.Size) .. ")")
         end
     end
-})
-
--- ==================== ABA SURVIVOR ====================
-local SurvivorTab = Window:Tab({
-    Title = "Survivor",
-    Icon = "user"
-})
-
-local SurvivorSection = SurvivorTab:Section({
-    Title = "Funções de Sobrevivente",
-    Closed = false
-})
-
--- ==================== AUTO SKILL CHECK ====================
-local skillCheckEnabled = false
-local skillCheckHook
-
-SurvivorSection:Toggle({
-    Title = "Auto Skill Check",
-    Description = "Sempre acerta o skill check",
-    Callback = function(v)
-        skillCheckEnabled = v
+    
+    -- Partes prioritárias para expandir
+    local expandedParts = {}
+    local partsToExpand = {"Head", "HumanoidRootPart", "Torso", "UpperTorso", "LowerTorso"}
+    
+    for _, partName in pairs(partsToExpand) do
+        local originalPart = monster:FindFirstChild(partName)
+        if originalPart and originalPart:IsA("BasePart") then
+            debugPrint("✅ Expandindo parte: " .. partName)
+            
+            -- Criar parte expandida
+            local expandedPart = Instance.new("Part")
+            expandedPart.Name = "ExpandedHitbox_" .. partName
+            expandedPart.Size = originalPart.Size * HitboxSystem.SizeMultiplier
+            expandedPart.CFrame = originalPart.CFrame
+            expandedPart.Anchored = false
+            expandedPart.CanCollide = false
+            expandedPart.Transparency = HitboxSystem.Transparency
+            expandedPart.Color = HitboxSystem.Color
+            expandedPart.Material = Enum.Material.Neon
+            
+            -- Usar WeldConstraint para seguir o monstro
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = originalPart
+            weld.Part1 = expandedPart
+            weld.Parent = expandedPart
+            
+            -- Adicionar para ser visível mas não interferir
+            local selection = Instance.new("SelectionBox")
+            selection.Adornee = expandedPart
+            selection.Transparency = 1
+            selection.Visible = false
+            selection.Parent = expandedPart
+            
+            expandedPart.Parent = monster
+            expandedParts[originalPart] = expandedPart
+            
+            debugPrint("  Criada hitbox: " .. expandedPart.Name .. " (Tamanho: " .. tostring(expandedPart.Size) .. ")")
+        end
+    end
+    
+    -- Se não expandiu partes prioritárias, expandir qualquer BasePart
+    if next(expandedParts) == nil then
+        debugPrint("⚠️ Nenhuma parte prioritária encontrada, expandindo todas as BaseParts...")
         
-        if v and not skillCheckHook then
-            local mt = getrawmetatable(game)
-            local oldNamecall = mt.__namecall
-            
-            skillCheckHook = hookfunction(mt.__namecall, function(self, ...)
-                local method = getnamecallmethod()
+        for _, originalPart in pairs(monster:GetChildren()) do
+            if originalPart:IsA("BasePart") and not string.find(originalPart.Name, "ExpandedHitbox") then
+                debugPrint("✅ Expandindo: " .. originalPart.Name)
                 
-                if method == "FireServer" 
-                and tostring(self) == "SkillCheckResultEvent" 
-                and skillCheckEnabled then
-                    return oldNamecall(self, true)
-                end
+                local expandedPart = Instance.new("Part")
+                expandedPart.Name = "ExpandedHitbox_" .. originalPart.Name
+                expandedPart.Size = originalPart.Size * HitboxSystem.SizeMultiplier
+                expandedPart.CFrame = originalPart.CFrame
+                expandedPart.Anchored = false
+                expandedPart.CanCollide = false
+                expandedPart.Transparency = HitboxSystem.Transparency
+                expandedPart.Color = HitboxSystem.Color
+                expandedPart.Material = Enum.Material.Neon
                 
-                return oldNamecall(self, ...)
-            end)
-            
-            WindUI:Notify({
-                Title = "Auto Skill Check",
-                Content = "Ativado com hook seguro",
-                Duration = 3
-            })
-        elseif not v and skillCheckHook then
-            -- Restaurar hook original se necessário
-        end
-    end
-})
-
-SurvivorSection:Toggle({
-    Title = "ESP Exits",
-    Description = "Mostra saídas do mapa",
-    Callback = function(v)
-        CONFIG.SHOW_EXITS = v
-    end
-})
-
-SurvivorSection:Toggle({
-    Title = "ESP Lockers",
-    Description = "Mostra armários para se esconder",
-    Callback = function(v)
-        CONFIG.SHOW_LOCKERS = v
-    end
-})
-
--- ==================== ABA ESP ====================
-local EspTab = Window:Tab({
-    Title = "ESP",
-    Icon = "brush"
-})
-
-local EspSection = EspTab:Section({
-    Title = "Configurações de ESP",
-    Closed = false
-})
-
--- ==================== VARIÁVEIS ESP ====================
-local espPlayers = false
-local espKiller = false
-local espGenerator = false
-local espGift = false
-local espHealth = false
-local espDistance = false
-
-local playerESP = {}
-local generatorESP = {}
-local giftESP = {}
-local exitESP = {}
-local lockerESP = {}
-
--- ==================== FUNÇÕES UTILITÁRIAS ====================
-local function calculateDistance(position1, position2)
-    if not position1 or not position2 then return math.huge end
-    return (position1 - position2).Magnitude
-end
-
-local function isVisible(part)
-    if not part then return false end
-    
-    local origin = Camera.CFrame.Position
-    local direction = (part.Position - origin).Unit
-    local ray = Ray.new(origin, direction * CONFIG.MAX_DISTANCE)
-    local hit, position = Workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
-    
-    return not hit or hit:IsDescendantOf(part.Parent)
-end
-
-local function getTransparencyBasedOnDistance(distance)
-    if distance > CONFIG.ESP_FADE_DISTANCE then
-        return 0.7 + (distance - CONFIG.ESP_FADE_DISTANCE) / 1000
-    end
-    return 0
-end
-
--- ==================== LIMPEZA DE ESP ====================
-local function clearESP(espTable, obj)
-    local data = espTable[obj]
-    if data then
-        for _, element in pairs(data) do
-            if typeof(element) == "Instance" and element.Parent then
-                element:Destroy()
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0 = originalPart
+                weld.Part1 = expandedPart
+                weld.Parent = expandedPart
+                
+                expandedPart.Parent = monster
+                expandedParts[originalPart] = expandedPart
             end
         end
-        espTable[obj] = nil
-    end
-end
-
-local function cleanupAllESP()
-    for p in pairs(playerESP) do clearESP(playerESP, p) end
-    for g in pairs(generatorESP) do clearESP(generatorESP, g) end
-    for g in pairs(giftESP) do clearESP(giftESP, g) end
-    for e in pairs(exitESP) do clearESP(exitESP, e) end
-    for l in pairs(lockerESP) do clearESP(lockerESP, l) end
-end
-
--- ==================== PLAYER ESP ====================
-local function getPlayerHealth(player)
-    local char = player.Character
-    if not char then return "N/A" end
-    
-    local humanoid = char:FindFirstChild("Humanoid")
-    if humanoid then
-        return math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
     end
     
-    return "N/A"
-end
-
-local function updatePlayerESPData(player, data)
-    if not data.part or not data.part.Parent then return false end
-    
-    local char = player.Character
-    if not char then return false end
-    
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    
-    local distance = calculateDistance(Camera.CFrame.Position, hrp.Position)
-    if distance > CONFIG.MAX_DISTANCE then
-        data.hl.Enabled = false
-        data.bb.Enabled = false
+    if next(expandedParts) ~= nil then
+        HitboxSystem.ExpandedMonsters[monster] = expandedParts
+        debugPrint("🎯 MONSTRO EXPANDIDO COM SUCESSO: " .. monster.Name)
+        return true
+    else
+        debugPrint("❌ FALHA: Não foi possível expandir nenhuma parte do monstro")
         return false
     end
-    
-    local isKiller = player.Team and player.Team.Name == "Killer"
-    local shouldShow = (espPlayers and not isKiller) or (espKiller and isKiller)
-    
-    if not shouldShow then
-        data.hl.Enabled = false
-        data.bb.Enabled = false
-        return true
-    end
-    
-    local transparency = getTransparencyBasedOnDistance(distance)
-    local visible = isVisible(hrp)
-    
-    data.hl.Enabled = true
-    data.bb.Enabled = true
-    
-    -- Atualizar cor baseado na visibilidade
-    local color = isKiller and CONFIG.KILLER_COLOR or CONFIG.SURVIVOR_COLOR
-    if not visible then
-        color = Color3.fromRGB(color.R * 150, color.G * 150, color.B * 150)
-    end
-    
-    data.hl.OutlineColor = color
-    data.hl.OutlineTransparency = transparency
-    data.hl.FillTransparency = CONFIG.HIGHLIGHT_FILL + transparency
-    
-    -- Atualizar texto
-    local text = player.Name
-    if espDistance then
-        text = text .. " [" .. math.floor(distance) .. "m]"
-    end
-    if espHealth then
-        text = text .. " - " .. getPlayerHealth(player)
-    end
-    
-    if data.txt then
-        data.txt.Text = text
-        data.txt.TextColor3 = color
-        data.txt.TextTransparency = transparency
-    end
-    
-    return true
 end
 
-local function applyPlayerESP(player)
-    if player == LocalPlayer then return end
+-- Expandir TODOS os monstros
+local function expandAllMonsters()
+    debugPrint("=== EXPANDINDO TODOS OS MONSTROS ===")
     
-    local function setupESP()
-        local char = player.Character
-        if not char then return end
-        
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        local head = char:FindFirstChild("Head")
-        if not hrp or not head then return end
-
-        clearESP(playerESP, player)
-
-        local hl = Instance.new("Highlight")
-        hl.FillColor = Color3.fromRGB(255, 255, 255)
-        hl.FillTransparency = CONFIG.HIGHLIGHT_FILL
-        hl.OutlineTransparency = 0
-        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        hl.Enabled = false
-        hl.Parent = char
-
-        local bb = Instance.new("BillboardGui")
-        bb.Adornee = head
-        bb.Size = UDim2.fromOffset(200, 25)
-        bb.StudsOffset = Vector3.new(0, 2.5, 0)
-        bb.AlwaysOnTop = true
-        bb.Enabled = false
-        bb.Parent = head
-
-        local txt = Instance.new("TextLabel")
-        txt.Size = UDim2.fromScale(1, 1)
-        txt.BackgroundTransparency = 1
-        txt.Font = Enum.Font.GothamBold
-        txt.TextSize = CONFIG.TEXT_SIZE
-        txt.TextStrokeTransparency = 0.5
-        txt.Parent = bb
-
-        playerESP[player] = {
-            hl = hl, 
-            bb = bb, 
-            txt = txt,
-            part = hrp
-        }
-    end
-
-    if player.Character then
-        setupESP()
-    end
-
-    local connection
-    connection = player.CharacterAdded:Connect(function()
-        setupESP()
-    end)
-    
-    table.insert(playerESP, {player = player, connection = connection})
-end
-
--- ==================== GENERATOR ESP ====================
-local function getGeneratorPercent(model)
-    local progress = model:GetAttribute("RepairProgress")
-    if typeof(progress) == "number" then
-        local percent = progress <= 1 and (progress * 100) or progress
-        return math.floor(percent)
-    end
-    return 0
-end
-
-local function updateGeneratorESP(model, data)
-    if not data.part or not data.part.Parent then return false end
-    
-    local distance = calculateDistance(Camera.CFrame.Position, data.part.Position)
-    if distance > CONFIG.MAX_DISTANCE then
-        data.hl.Enabled = false
-        data.bb.Enabled = false
-        return false
+    local folder = HitboxSystem.KillersFolder or findKillersFolder()
+    if not folder then
+        debugPrint("❌ ERRO: Pasta Killers não encontrada!")
+        return 0
     end
     
-    if not espGenerator then
-        data.hl.Enabled = false
-        data.bb.Enabled = false
-        return true
-    end
+    debugPrint("Monstros na pasta " .. folder.Name .. ": " .. #folder:GetChildren())
     
-    local transparency = getTransparencyBasedOnDistance(distance)
-    local percent = getGeneratorPercent(model)
-    
-    data.hl.Enabled = true
-    data.bb.Enabled = true
-    data.hl.OutlineColor = CONFIG.GENERATOR_COLOR
-    data.hl.OutlineTransparency = transparency
-    data.hl.FillTransparency = CONFIG.HIGHLIGHT_FILL + transparency
-    
-    if data.txt then
-        data.txt.Text = "Generator [" .. percent .. "%]"
-        data.txt.TextColor3 = CONFIG.GENERATOR_COLOR
-        data.txt.TextTransparency = transparency
-    end
-    
-    return true
-end
-
--- ==================== OBJECT SCANNER ====================
-local function scanForObjects()
-    for _, obj in ipairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") then
-            if obj.Name == "Generator" and not generatorESP[obj] then
-                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local hl = Instance.new("Highlight")
-                    hl.FillTransparency = CONFIG.HIGHLIGHT_FILL
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Enabled = false
-                    hl.Parent = obj
-                    
-                    local bb = Instance.new("BillboardGui")
-                    bb.Adornee = part
-                    bb.Size = UDim2.fromOffset(150, 25)
-                    bb.StudsOffset = Vector3.new(0, 3, 0)
-                    bb.AlwaysOnTop = true
-                    bb.Enabled = false
-                    bb.Parent = part
-                    
-                    local txt = Instance.new("TextLabel")
-                    txt.Size = UDim2.fromScale(1, 1)
-                    txt.BackgroundTransparency = 1
-                    txt.Font = Enum.Font.GothamBold
-                    txt.TextSize = CONFIG.TEXT_SIZE
-                    txt.TextStrokeTransparency = 0.5
-                    txt.Parent = bb
-                    
-                    generatorESP[obj] = {hl = hl, bb = bb, txt = txt, part = part}
-                end
-                
-            elseif obj.Name == "Gift" and not giftESP[obj] then
-                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local hl = Instance.new("Highlight")
-                    hl.FillTransparency = CONFIG.HIGHLIGHT_FILL
-                    hl.OutlineColor = CONFIG.GIFT_COLOR
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Enabled = false
-                    hl.Parent = obj
-                    
-                    giftESP[obj] = {hl = hl, part = part}
-                end
-                
-            elseif (obj.Name:lower():find("exit") or obj.Name:lower():find("gate")) 
-                   and not exitESP[obj] then
-                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local hl = Instance.new("Highlight")
-                    hl.FillTransparency = CONFIG.HIGHLIGHT_FILL
-                    hl.OutlineColor = CONFIG.EXIT_COLOR
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Enabled = false
-                    hl.Parent = obj
-                    
-                    exitESP[obj] = {hl = hl, part = part}
-                end
-                
-            elseif (obj.Name:lower():find("locker") or obj.Name:lower():find("closet")) 
-                   and not lockerESP[obj] then
-                local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local hl = Instance.new("Highlight")
-                    hl.FillTransparency = CONFIG.HIGHLIGHT_FILL
-                    hl.OutlineColor = CONFIG.LOCKER_COLOR
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Enabled = false
-                    hl.Parent = obj
-                    
-                    lockerESP[obj] = {hl = hl, part = part}
-                end
-            end
-        end
-    end
-end
-
--- ==================== TOGGLES ====================
-EspSection:Toggle({
-    Title = "ESP Players (Verde)",
-    Description = "Mostra sobreviventes",
-    Callback = function(v) 
-        espPlayers = v 
-        if not v then
-            for _, data in pairs(playerESP) do
-                if data.hl and not data.isKiller then
-                    data.hl.Enabled = false
-                    if data.bb then data.bb.Enabled = false end
-                end
-            end
-        end
-    end
-})
-
-EspSection:Toggle({
-    Title = "ESP Killer (Vermelho)",
-    Description = "Mostra o killer",
-    Callback = function(v) 
-        espKiller = v 
-        if not v then
-            for _, data in pairs(playerESP) do
-                if data.hl and data.isKiller then
-                    data.hl.Enabled = false
-                    if data.bb then data.bb.Enabled = false end
-                end
-            end
-        end
-    end
-})
-
-EspSection:Toggle({
-    Title = "ESP Generator (Amarelo)",
-    Description = "Mostra geradores com porcentagem",
-    Callback = function(v) 
-        espGenerator = v 
-        if not v then
-            for _, data in pairs(generatorESP) do
-                data.hl.Enabled = false
-                if data.bb then data.bb.Enabled = false end
-            end
-        end
-    end
-})
-
-EspSection:Toggle({
-    Title = "ESP Gift (Azul)",
-    Description = "Mostra presentes",
-    Callback = function(v) 
-        espGift = v 
-        if not v then
-            for _, data in pairs(giftESP) do
-                data.hl.Enabled = false
-            end
-        end
-    end
-})
-
-EspSection:Toggle({
-    Title = "Mostrar Vida",
-    Description = "Exibe vida dos players",
-    Callback = function(v) espHealth = v end
-})
-
-EspSection:Toggle({
-    Title = "Mostrar Distância",
-    Description = "Exibe distância dos objetos",
-    Callback = function(v) espDistance = v end
-})
-
-EspSection:Button({
-    Title = "Limpar Todos ESP",
-    Description = "Remove todos os ESP da tela",
-    Callback = cleanupAllESP
-})
-
--- ==================== AIMLOCK SISTEMA ====================
-local function findNearestTarget()
-    local nearest = nil
-    local nearestDist = math.huge
-    local localHRP = getHRP()
-    
-    if not localHRP then return nil end
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local dist = (localHRP.Position - hrp.Position).Magnitude
-                if dist < nearestDist and dist < 50 then
-                    nearest = player
-                    nearestDist = dist
-                end
-            end
-        end
-    end
-    
-    return nearest
-end
-
--- ==================== LOOP PRINCIPAL OTIMIZADO ====================
-local updateTimer = 0
-local scanTimer = 0
-local generatorUpdateTimer = 0
-
-RunService.Heartbeat:Connect(function(dt)
-    updateTimer += dt
-    scanTimer += dt
-    generatorUpdateTimer += dt
-    
-    -- AIMLOCK
-    if aimlockEnabled then
-        if not aimlockTarget or not aimlockTarget.Character then
-            aimlockTarget = findNearestTarget()
-        end
-        
-        if aimlockTarget and aimlockTarget.Character then
-            local targetHRP = aimlockTarget.Character:FindFirstChild("HumanoidRootPart")
-            local localChar = LocalPlayer.Character
-            local localHRP = localChar and localChar:FindFirstChild("HumanoidRootPart")
+    local expandedCount = 0
+    for _, monster in pairs(folder:GetChildren()) do
+        if monster:IsA("Model") then
+            debugPrint("--- Processando: " .. monster.Name .. " ---")
             
-            if targetHRP and localHRP then
-                local direction = (targetHRP.Position - localHRP.Position).Unit
-                Camera.CFrame = CFrame.new(Camera.CFrame.Position, targetHRP.Position)
-            end
-        end
-    end
-    
-    -- SCAN PERIÓDICO (a cada 5 segundos)
-    if scanTimer >= 5 then
-        scanTimer = 0
-        task.spawn(scanForObjects)
-    end
-    
-    -- ATUALIZAÇÃO GERAL (a cada 0.5 segundos)
-    if updateTimer >= CONFIG.UPDATE_RATE then
-        updateTimer = 0
-        
-        -- Atualizar players
-        for player, data in pairs(playerESP) do
-            if not updatePlayerESPData(player, data) then
-                clearESP(playerESP, player)
-            end
-        end
-        
-        -- Atualizar generators
-        for model, data in pairs(generatorESP) do
-            if not updateGeneratorESP(model, data) then
-                clearESP(generatorESP, model)
-            end
-        end
-        
-        -- Atualizar gifts
-        for model, data in pairs(giftESP) do
-            if not data.part or not data.part.Parent then
-                clearESP(giftESP, model)
+            -- Verificar se tem Humanoid (é um monstro/npc)
+            local humanoid = monster:FindFirstChild("Humanoid")
+            if humanoid then
+                debugPrint("✅ É um NPC com Humanoid (Vida: " .. humanoid.Health .. ")")
+                
+                if expandSingleMonster(monster) then
+                    expandedCount = expandedCount + 1
+                end
             else
-                local distance = calculateDistance(Camera.CFrame.Position, data.part.Position)
-                data.hl.Enabled = espGift and distance <= CONFIG.MAX_DISTANCE
-                if data.hl.Enabled then
-                    local transparency = getTransparencyBasedOnDistance(distance)
-                    data.hl.OutlineTransparency = transparency
-                    data.hl.FillTransparency = CONFIG.HIGHLIGHT_FILL + transparency
+                debugPrint("⚠️ Não tem Humanoid, mas vou tentar expandir mesmo assim")
+                if expandSingleMonster(monster) then
+                    expandedCount = expandedCount + 1
                 end
             end
-        end
-        
-        -- Atualizar exits
-        for model, data in pairs(exitESP) do
-            if not data.part or not data.part.Parent then
-                clearESP(exitESP, model)
-            else
-                local distance = calculateDistance(Camera.CFrame.Position, data.part.Position)
-                data.hl.Enabled = CONFIG.SHOW_EXITS and distance <= CONFIG.MAX_DISTANCE
-                if data.hl.Enabled then
-                    local transparency = getTransparencyBasedOnDistance(distance)
-                    data.hl.OutlineTransparency = transparency
-                    data.hl.FillTransparency = CONFIG.HIGHLIGHT_FILL + transparency
-                end
-            end
-        end
-        
-        -- Atualizar lockers
-        for model, data in pairs(lockerESP) do
-            if not data.part or not data.part.Parent then
-                clearESP(lockerESP, model)
-            else
-                local distance = calculateDistance(Camera.CFrame.Position, data.part.Position)
-                data.hl.Enabled = CONFIG.SHOW_LOCKERS and distance <= CONFIG.MAX_DISTANCE
-                if data.hl.Enabled then
-                    local transparency = getTransparencyBasedOnDistance(distance)
-                    data.hl.OutlineTransparency = transparency
-                    data.hl.FillTransparency = CONFIG.HIGHLIGHT_FILL + transparency
-                end
-            end
+            
+            debugPrint("--- Fim: " .. monster.Name .. " ---")
         end
     end
     
-    -- Atualizar porcentagem dos generators (a cada 7 segundos)
-    if generatorUpdateTimer >= CONFIG.GENERATOR_UPDATE_RATE then
-        generatorUpdateTimer = 0
-        for model, data in pairs(generatorESP) do
-            if data.txt and data.part and data.part.Parent then
-                local percent = getGeneratorPercent(model)
-                data.txt.Text = "Generator [" .. percent .. "%]"
-            end
-        end
-    end
-end)
-
--- ==================== SCAN INICIAL ====================
-task.spawn(function()
-    wait(2) -- Esperar carregamento inicial
-    scanForObjects()
-    
-    -- Monitorar novos objetos
-    Workspace.DescendantAdded:Connect(function(obj)
-        if obj:IsA("Model") then
-            if obj.Name == "Generator" then
-                task.wait(0.5) -- Esperar carregamento
-                scanForObjects()
-            elseif obj.Name == "Gift" or obj.Name:lower():find("exit") or obj.Name:lower():find("locker") then
-                task.wait(0.5)
-                scanForObjects()
-            end
-        end
-    end)
-end)
-
--- Players
-for _, player in ipairs(Players:GetPlayers()) do
-    applyPlayerESP(player)
+    debugPrint("=== EXPANSÃO CONCLUÍDA ===")
+    debugPrint("Total expandido: " .. expandedCount .. " monstros")
+    return expandedCount
 end
 
-Players.PlayerAdded:Connect(applyPlayerESP)
-
-Players.PlayerRemoving:Connect(function(player)
-    clearESP(playerESP, player)
-end)
-
--- ==================== HOTKEYS ====================
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
+-- Restaurar monstros ao normal
+local function restoreAllMonsters()
+    debugPrint("=== RESTAURANDO MONSTROS ===")
     
-    if input.KeyCode == Enum.KeyCode.RightControl then
-        aimlockEnabled = not aimlockEnabled
-        WindUI:Notify({
-            Title = "Aimlock",
-            Content = aimlockEnabled and "Ativado" or "Desativado",
-            Duration = 2
+    local restoredCount = 0
+    for monster, expandedParts in pairs(HitboxSystem.ExpandedMonsters) do
+        if monster and monster.Parent then
+            debugPrint("Restaurando: " .. monster.Name)
+            
+            for _, expandedPart in pairs(expandedParts) do
+                if expandedPart and expandedPart.Parent then
+                    expandedPart:Destroy()
+                end
+            end
+            restoredCount = restoredCount + 1
+        end
+    end
+    
+    HitboxSystem.ExpandedMonsters = {}
+    debugPrint("✅ Restaurados: " .. restoredCount .. " monstros")
+    return restoredCount
+end
+
+-- Alternar sistema
+local function toggleHitboxSystem()
+    HitboxSystem.Enabled = not HitboxSystem.Enabled
+    
+    if HitboxSystem.Enabled then
+        debugPrint("🎯 ATIVANDO SISTEMA DE HITBOX")
+        
+        -- Primeiro, tentar encontrar a pasta
+        findKillersFolder()
+        
+        -- Expandir monstros
+        local count = expandAllMonsters()
+        
+        if count > 0 then
+            Rayfield:Notify({
+                Title = "Hitbox Expander",
+                Content = "Ativado! " .. count .. " monstros expandidos.",
+                Duration = 5,
+                Image = 4483362458
+            })
+        else
+            Rayfield:Notify({
+                Title = "Aviso",
+                Content = "Nenhum monstro encontrado na pasta Killers!",
+                Duration = 5,
+                Image = 4483362458
+            })
+        end
+        
+    else
+        debugPrint("🚫 DESATIVANDO SISTEMA DE HITBOX")
+        
+        local count = restoreAllMonsters()
+        
+        Rayfield:Notify({
+            Title = "Hitbox Expander",
+            Content = "Desativado! " .. count .. " monstros restaurados.",
+            Duration = 5,
+            Image = 4483362458
         })
-    elseif input.KeyCode == Enum.KeyCode.Insert then
-        Window:Toggle()
     end
-end)
+end
 
--- ==================== CLEANUP ON GAME LEAVE ====================
-game:GetService("CoreGui").ChildRemoved:Connect(function(child)
-    if child.Name == "WindUI" then
-        cleanupAllESP()
-    end
-end)
+-- ============================================
+-- 3. INTERFACE RAYFIELD
+-- ============================================
 
--- ==================== FINAL ====================
-WindUI:Notify({
-    Title = "Ped V1 Optimized Carregado!",
-    Content = "Pressione Insert para abrir/fechar menu\nRightControl para aimlock",
-    Duration = 8
+-- Aba de Teleportes
+local TeleportTab = Window:CreateTab("Teleportes", 4483362458)
+TeleportTab:CreateSection("Teleportes Temporários")
+
+TeleportTab:CreateButton({
+    Name = "🚀 Alien Gun (5 segundos)",
+    Callback = function()
+        teleportToLocation("Alien Gun", TeleportLocations["Alien Gun"])
+    end,
 })
 
-print("🎮 Ped V1 (Optimized v1.2) carregado com sucesso!")
-print("📊 ESP otimizado com limpeza automática")
-print("🎯 Aimlock local ativável com RightControl")
-print("👁️  Visual enhancements disponíveis")
+-- Aba de Combate
+local CombatTab = Window:CreateTab("Combate", 7733765391)
+CombatTab:CreateSection("Expansor de Hitbox - CORRIGIDO")
+
+-- Botão de diagnóstico primeiro
+CombatTab:CreateButton({
+    Name = "🔍 DIAGNÓSTICO",
+    Callback = function()
+        debugPrint("=== EXECUTANDO DIAGNÓSTICO ===")
+        
+        local folder = findKillersFolder()
+        if folder then
+            Rayfield:Notify({
+                Title = "Diagnóstico",
+                Content = "Pasta encontrada: " .. folder.Name .. " (" .. #folder:GetChildren() .. " itens)",
+                Duration = 5,
+                Image = 4483362458
+            })
+            
+            -- Mostrar alguns monstros
+            for i = 1, math.min(3, #folder:GetChildren()) do
+                local monster = folder:GetChildren()[i]
+                if monster then
+                    debugPrint("Monstro " .. i .. ": " .. monster.Name)
+                end
+            end
+        else
+            Rayfield:Notify({
+                Title = "Erro",
+                Content = "Pasta Killers não encontrada!",
+                Duration = 5,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+-- Toggle principal
+local HitboxToggle = CombatTab:CreateToggle({
+    Name = "Ativar Hitbox Expander",
+    CurrentValue = false,
+    Callback = toggleHitboxSystem
+})
+
+-- Controles
+CombatTab:CreateSlider({
+    Name = "Tamanho (recomendado: 3x)",
+    Range = {2, 5},
+    Increment = 0.5,
+    Suffix = "x",
+    CurrentValue = HitboxSystem.SizeMultiplier,
+    Callback = function(value)
+        HitboxSystem.SizeMultiplier = value
+        if HitboxSystem.Enabled then
+            -- Recarregar com novo tamanho
+            restoreAllMonsters()
+            expandAllMonsters()
+        end
+    end,
+})
+
+CombatTab:CreateSlider({
+    Name = "Transparência",
+    Range = {0.5, 1},
+    Increment = 0.1,
+    CurrentValue = HitboxSystem.Transparency,
+    Callback = function(value)
+        HitboxSystem.Transparency = value
+        if HitboxSystem.Enabled then
+            for _, expandedParts in pairs(HitboxSystem.ExpandedMonsters) do
+                for _, part in pairs(expandedParts) do
+                    if part then part.Transparency = value end
+                end
+            end
+        end
+    end,
+})
+
+-- Botão para testar em Jeff específico
+CombatTab:CreateButton({
+    Name = "🧪 TESTAR NO JEFF",
+    Callback = function()
+        debugPrint("=== TESTANDO NO JEFF ESPECÍFICO ===")
+        
+        local jeff = workspace:FindFirstChild("Killers"):FindFirstChild("Jeff")
+        if jeff then
+            debugPrint("Jeff encontrado!")
+            
+            if expandSingleMonster(jeff) then
+                Rayfield:Notify({
+                    Title = "Teste Jeff",
+                    Content = "Hitbox expandida com sucesso!",
+                    Duration = 5,
+                    Image = 4483362458
+                })
+            else
+                Rayfield:Notify({
+                    Title = "Erro Jeff",
+                    Content = "Falha ao expandir Jeff",
+                    Duration = 5,
+                    Image = 4483362458
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "Jeff não encontrado",
+                Content = "Verifique se Jeff está em workspace.Killers",
+                Duration = 5,
+                Image = 4483362458
+            })
+        end
+    end,
+})
+
+-- ============================================
+-- 4. INICIALIZAÇÃO E DEBUG
+-- ============================================
+
+print("==========================================")
+print(" SURVIVAL HELPER - VERSÃO CORRIGIDA")
+print("==========================================")
+print("✅ Interface Rayfield carregada")
+print("✅ Sistema de Teleporte pronto")
+print("✅ Hitbox Expander corrigido")
+print("==========================================")
+
+-- Verificar se a pasta existe ao iniciar
+spawn(function()
+    wait(2)
+    local folder = findKillersFolder()
+    if folder then
+        print("📁 Pasta de monstros: " .. folder.Name)
+        print("📊 Total de itens: " .. #folder:GetChildren())
+    end
+end)
+
+Rayfield:Notify({
+    Title = "Sistema Pronto!",
+    Content = "Use a aba Combate para Hitbox Expander",
+    Duration = 5,
+    Image = 4483362458
+})
+```
+
+Teste RÁPIDO - Execute este primeiro:
+
+```lua
+-- TESTE IMEDIATO DE HITBOX
+print("=== TESTE IMEDIATO ===")
+
+-- 1. Verificar se Jeff existe
+local jeff = workspace.Killers.Jeff
+if jeff then
+    print("✅ Jeff encontrado em workspace.Killers.Jeff")
+    
+    -- 2. Verificar partes do Jeff
+    print("Partes do Jeff:")
+    for _, part in pairs(jeff:GetChildren()) do
+        if part:IsA("BasePart") then
+            print("  - " .. part.Name .. " | Tamanho: " .. tostring(part.Size))
+        end
+    end
+    
+    -- 3. Expandir APENAS a cabeça (teste simples)
+    local head = jeff:FindFirstChild("Head")
+    if head then
+        print("✅ Cabeça encontrada! Expandindo...")
+        
+        -- Criar hitbox expandida
+        local expandedHead = Instance.new("Part")
+        expandedHead.Name = "ExpandedHitbox_Test"
+        expandedHead.Size = head.Size * 3
+        expandedHead.CFrame = head.CFrame
+        expandedHead.Transparency = 0.7
+        expandedHead.Color = Color3.fromRGB(255, 0, 0)
+        expandedHead.Material = Enum.Material.Neon
+        expandedHead.CanCollide = false
+        
+        -- Fixar na cabeça
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = head
+        weld.Part1 = expandedHead
+        weld.Parent = expandedHead
+        
+        expandedHead.Parent = jeff
+        
+        print("🎯 TESTE CONCLUÍDO!")
+        print("A cabeça do Jeff agora deve estar 3x maior e vermelha!")
+    else
+        print("❌ Jeff não tem 'Head'")
+        
+        -- Mostrar o que ele tem
+        for _, part in pairs(jeff:GetChildren()) do
+            print("Tem: " .. part.Name .. " (" .. part.ClassName .. ")")
+        end
+    end
+else
+    print("❌ Jeff não encontrado!")
+    print("Verifique: workspace.Killers existe?")
+    
+    if workspace:FindFirstChild("Killers") then
+        print("✅ Killers existe! Itens:")
+        for _, item in pairs(workspace.Killers:GetChildren()) do
+            print("  - " .. item.Name)
+        end
+    else
+        print("❌ Killers não existe no workspace")
+    end
+end
