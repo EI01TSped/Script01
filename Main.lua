@@ -3,21 +3,11 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 -- Criar janela
 local Window = Rayfield:CreateWindow({
-    Name = "Survival System v2.0",
-    LoadingTitle = "Carregando utilitários...",
-    LoadingSubtitle = "Teleporte + Hitbox Expander Avançado",
-    ConfigurationSaving = {
-        Enabled = false
-    }
+    Name = "Survival Helper",
+    LoadingTitle = "Carregando...",
+    LoadingSubtitle = "Sistema Otimizado",
+    ConfigurationSaving = {Enabled = false}
 })
-
--- ============================================
--- CONFIGURAÇÕES GERAIS
--- ============================================
-local teleporting = false
-local teleportCooldowns = {}
-local cooldownTime = 10
-local buttonReferences = {}
 
 -- Serviços
 local Players = game:GetService("Players")
@@ -25,30 +15,41 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 
 -- ============================================
--- SISTEMA DE TELEPORTE
+-- CONFIGURAÇÕES SIMPLIFICADAS
 -- ============================================
+local teleporting = false
+local cooldownTime = 10
+local buttonReferences = {}
 
--- Coordenadas dos teleportes organizadas por categoria
+-- Configurações do Hitbox Expander
+local HITBOX_SIZE = 15
+local HEAD_SIZE = 8
+local HITBOX_ENABLED = false
+local HEAD_ENABLED = false
+local expandedHitboxes = {}
+
+-- ============================================
+-- TELEPORTE SIMPLIFICADO
+-- ============================================
 local TeleportLocations = {
-    -- CATEGORIA: ARMAS
-    ["Alien Gun"] = {pos = Vector3.new(114.22046661376953, 335.4999084472656, 565.9104614257812), returnToOrigin = true},
+    -- ARMAS
+    ["Alien Gun"] = Vector3.new(114.22046661376953, 335.4999084472656, 565.9104614257812),
     
-    -- CATEGORIA: BASES/LOCAIS
-    ["Base Segura"] = {pos = Vector3.new(-51.438236236572266, 313.5002746582031, 292.1361999511719), returnToOrigin = false},
-    ["Energia"] = {pos = Vector3.new(126.81755828857422, 323.4999694824219, 600.4284057617188), returnToOrigin = true},
-    ["Roleta"] = {pos = Vector3.new(111.14323425292969, 313.4999694824219, 350.11810302734375), returnToOrigin = true},
-    ["Upgrade"] = {pos = Vector3.new(111.16646575927734, 335.4999694824219, 66.77725982666016), returnToOrigin = true},
+    -- BASES
+    ["Base Segura"] = Vector3.new(-51.438236236572266, 313.5002746582031, 292.1361999511719),
+    ["Energia"] = Vector3.new(126.81755828857422, 323.4999694824219, 600.4284057617188),
+    ["Roleta"] = Vector3.new(111.14323425292969, 313.4999694824219, 350.11810302734375),
+    ["Upgrade"] = Vector3.new(111.16646575927734, 335.4999694824219, 66.77725982666016),
     
-    -- CATEGORIA: POWERS
-    ["2X dano"] = {pos = Vector3.new(98.72466278076172, 271.7002258300781, 176.35610961914062), returnToOrigin = true},
-    ["Revive"] = {pos = Vector3.new(183.5561981201172, 313.4999694824219, 434.4063720703125), returnToOrigin = true},
-    ["Cura Bala"] = {pos = Vector3.new(-130.79737854003906, 293.4999694824219, 354.90643310546875), returnToOrigin = true},
-    ["Colete"] = {pos = Vector3.new(-169.19932556152344, 293.5002746582031, 317.37908935546875), returnToOrigin = true},
-    ["Speed Cola"] = {pos = Vector3.new(106.36351013183594, 323.4999694824219, 698.6314697265625), returnToOrigin = true},
-    ["Eletric Cherry"] = {pos = Vector3.new(-48.826568603515625, 293.49969482421875, 337.36962890625), returnToOrigin = true}
+    -- POWERS
+    ["2X dano"] = Vector3.new(98.72466278076172, 271.7002258300781, 176.35610961914062),
+    ["Revive"] = Vector3.new(183.5561981201172, 313.4999694824219, 434.4063720703125),
+    ["Cura Bala"] = Vector3.new(-130.79737854003906, 293.4999694824219, 354.90643310546875),
+    ["Colete"] = Vector3.new(-169.19932556152344, 293.5002746582031, 317.37908935546875),
+    ["Speed Cola"] = Vector3.new(106.36351013183594, 323.4999694824219, 698.6314697265625),
+    ["Eletric Cherry"] = Vector3.new(-48.826568603515625, 293.49969482421875, 337.36962890625)
 }
 
--- Emojis para cada local
 local LocationEmojis = {
     ["Alien Gun"] = "🚀",
     ["Base Segura"] = "🏠",
@@ -63,66 +64,26 @@ local LocationEmojis = {
     ["Eletric Cherry"] = "🟤"
 }
 
--- Função principal de teleporte
-local function teleportToLocation(locationName, teleportData)
-    if teleporting then 
-        Rayfield:Notify({
-            Title = "Aguarde",
-            Content = "Já há um teleporte em andamento!",
-            Duration = 3,
-            Image = 4483362458
-        })
-        return 
-    end
+local function teleportToLocation(locationName, position)
+    if teleporting then return end
     
-    -- Verificar recarga
-    if teleportCooldowns[locationName] and os.time() - teleportCooldowns[locationName] < cooldownTime then
-        local remaining = cooldownTime - (os.time() - teleportCooldowns[locationName])
-        Rayfield:Notify({
-            Title = "Em Recarga",
-            Content = locationName .. " estará disponível em " .. math.floor(remaining) .. " segundos",
-            Duration = 3,
-            Image = 4483362458
-        })
-        return
-    end
-    
-    -- Verificar player
     local player = Players.LocalPlayer
     local character = player.Character
+    if not character then return end
     
-    if not character then
-        Rayfield:Notify({
-            Title = "Erro",
-            Content = "Personagem não encontrado!",
-            Duration = 3,
-            Image = 4483362458
-        })
-        return
-    end
-    
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if not humanoidRootPart then
-        Rayfield:Notify({
-            Title = "Erro",
-            Content = "HumanoidRootPart não encontrado!",
-            Duration = 3,
-            Image = 4483362458
-        })
-        return
-    end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
     
     teleporting = true
-    local originalCFrame = humanoidRootPart.CFrame
+    local originalCFrame = hrp.CFrame
     
     -- Teleportar
-    humanoidRootPart.CFrame = CFrame.new(teleportData.pos)
+    hrp.CFrame = CFrame.new(position)
     
     Rayfield:Notify({
         Title = "Teleportado!",
-        Content = "Você foi para " .. locationName .. (teleportData.returnToOrigin and " por 5 segundos" or ""),
-        Duration = 5,
-        Image = 4483362458
+        Content = locationName .. " (5 segundos)",
+        Duration = 3
     })
     
     -- Atualizar botão
@@ -130,25 +91,18 @@ local function teleportToLocation(locationName, teleportData)
         buttonReferences[locationName]:Set("⏳ Teleportando...")
     end
     
-    -- Se for para retornar, espera 5 segundos e volta
-    if teleportData.returnToOrigin then
+    -- Só volta se NÃO for Base Segura
+    if locationName ~= "Base Segura" then
         wait(5)
-        
-        -- Voltar
-        humanoidRootPart.CFrame = originalCFrame
-        
+        hrp.CFrame = originalCFrame
         Rayfield:Notify({
             Title = "Retornado!",
-            Content = "Você voltou para sua posição original",
-            Duration = 3,
-            Image = 4483362458
+            Content = "Voltou para posição original",
+            Duration = 3
         })
     end
     
-    -- Ativar recarga
-    teleportCooldowns[locationName] = os.time()
-    
-    -- Iniciar contagem regressiva no botão
+    -- Recarga
     if buttonReferences[locationName] then
         local startTime = os.time()
         while os.time() - startTime < cooldownTime do
@@ -162,492 +116,226 @@ local function teleportToLocation(locationName, teleportData)
     teleporting = false
 end
 
--- Função para criar botão de teleporte
-local function createTeleportButton(tab, locationName, teleportData, emoji)
-    local button = tab:CreateButton({
-        Name = emoji .. " " .. locationName,
-        Callback = function()
-            teleportToLocation(locationName, teleportData)
-        end,
-    })
+-- ============================================
+-- HITBOX EXPANDER INVISÍVEL (SIMPLIFICADO)
+-- ============================================
+local function createInvisibleHitbox(originalPart, sizeMultiplier, isHead)
+    -- Cria uma hitbox INVISÍVEL
+    local hitbox = Instance.new("Part")
+    hitbox.Name = "InvisibleHitbox_" .. (isHead and "Head" or "Body")
+    hitbox.Size = originalPart.Size * sizeMultiplier
+    hitbox.CFrame = originalPart.CFrame
+    hitbox.Anchored = false
+    hitbox.CanCollide = false
+    hitbox.Transparency = 1 -- 100% INVISÍVEL
+    hitbox.Color = Color3.new(1, 0, 0) -- Só para debug, invisível mesmo
     
-    -- Guardar referência do botão
-    buttonReferences[locationName] = button
-    return button
+    -- Não mostra nada
+    hitbox.Material = Enum.Material.SmoothPlastic
+    
+    -- Conecta à parte original
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = originalPart
+    weld.Part1 = hitbox
+    weld.Parent = hitbox
+    
+    -- Remove qualquer sombra/reflexo
+    hitbox.CastShadow = false
+    
+    return hitbox
 end
 
--- Função para criar categoria com todos os botões
-local function createCategory(tabName, iconId, categoryTitle, locations)
-    local Tab = Window:CreateTab(tabName, iconId)
+local function expandMonster(monster)
+    if not monster or expandedHitboxes[monster] then return end
     
-    -- Seção de informações
-    Tab:CreateSection("📌 " .. categoryTitle)
-    Tab:CreateLabel("Cooldown: " .. cooldownTime .. " segundos")
-    
-    -- Seção de locais
-    Tab:CreateSection("📍 Locais Disponíveis")
-    
-    -- Criar botões para cada local
-    for locationName, teleportData in pairs(locations) do
-        local emoji = LocationEmojis[locationName] or "📍"
-        createTeleportButton(Tab, locationName, teleportData, emoji)
-    end
-    
-    return Tab
-end
-
--- ============================================
--- SISTEMA HITBOX EXPANDER AVANÇADO (2 SLIDERS)
--- ============================================
-
--- Configurações do Hitbox Expander
-local HITBOX_SIZE = 15 -- Tamanho da hitbox do corpo
-local HEAD_SIZE = 8    -- Tamanho da hitbox da cabeça
-local UPDATE_RATE = 1
-local HITBOX_ENABLED = true
-local HEAD_ENABLED = true -- Expandir cabeça para headshots
-local expandedHitboxes = {}
-local LocalPlayer = Players.LocalPlayer
-
--- Funções do Hitbox Expander
-local function expandHitbox(killer)
-    if not killer or expandedHitboxes[killer] then return end
-    
-    local hrp = killer:FindFirstChild("HumanoidRootPart")
-    local head = killer:FindFirstChild("Head")
+    local hrp = monster:FindFirstChild("HumanoidRootPart")
+    local head = monster:FindFirstChild("Head")
     if not hrp then return end
     
-    -- Salva valores originais do corpo
-    local originalSize = hrp.Size
-    local originalCanCollide = hrp.CanCollide
+    local hitboxes = {}
     
-    local data = {
-        hrp = hrp,
-        originalSize = originalSize,
-        originalCanCollide = originalCanCollide
-    }
-    
-    -- Se tem cabeça, salva os valores originais dela também
-    if head then
-        data.head = head
-        data.originalHeadSize = head.Size
-        data.originalHeadCanCollide = head.CanCollide
-    end
-    
-    expandedHitboxes[killer] = data
-    
-    -- Aplica expansão no corpo
+    -- Expansão do corpo
     if HITBOX_ENABLED then
-        hrp.Size = Vector3.new(HITBOX_SIZE, HITBOX_SIZE, HITBOX_SIZE)
-        hrp.CanCollide = false
+        local bodyHitbox = createInvisibleHitbox(hrp, HITBOX_SIZE / hrp.Size.X, false)
+        bodyHitbox.Parent = monster
+        hitboxes.body = bodyHitbox
     end
     
-    -- Aplica expansão na cabeça (para headshots)
+    -- Expansão da cabeça
     if HEAD_ENABLED and head then
-        head.Size = Vector3.new(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE)
-        head.CanCollide = false
+        local headHitbox = createInvisibleHitbox(head, HEAD_SIZE / head.Size.X, true)
+        headHitbox.Parent = monster
+        hitboxes.head = headHitbox
     end
+    
+    if next(hitboxes) ~= nil then
+        expandedHitboxes[monster] = hitboxes
+        return true
+    end
+    
+    return false
 end
 
-local function restoreHitbox(killer)
-    local data = expandedHitboxes[killer]
-    if not data then return end
+local function restoreMonster(monster)
+    local hitboxes = expandedHitboxes[monster]
+    if not hitboxes then return end
     
-    -- Restaura corpo
-    local hrp = data.hrp
-    if hrp and hrp.Parent then
-        hrp.Size = data.originalSize
-        hrp.CanCollide = data.originalCanCollide
+    if hitboxes.body and hitboxes.body.Parent then
+        hitboxes.body:Destroy()
     end
     
-    -- Restaura cabeça
-    local head = data.head
-    if head and head.Parent then
-        head.Size = data.originalHeadSize
-        head.CanCollide = data.originalHeadCanCollide
+    if hitboxes.head and hitboxes.head.Parent then
+        hitboxes.head:Destroy()
     end
     
-    expandedHitboxes[killer] = nil
+    expandedHitboxes[monster] = nil
 end
 
 local function updateAllHitboxes()
-    local killersFolder = Workspace:FindFirstChild("Killers")
-    if not killersFolder then 
-        print("❌ Pasta Killers não encontrada!")
-        return 
-    end
+    local killers = Workspace:FindFirstChild("Killers")
+    if not killers then return end
     
-    -- Remove hitboxes de killers que não existem mais
-    for killer, _ in pairs(expandedHitboxes) do
-        if not killer.Parent then
-            restoreHitbox(killer)
+    -- Limpa monstros que não existem mais
+    for monster, _ in pairs(expandedHitboxes) do
+        if not monster.Parent then
+            restoreMonster(monster)
         end
     end
     
-    -- Adiciona/atualiza hitboxes de killers existentes
-    for _, killer in ipairs(killersFolder:GetChildren()) do
-        if killer:IsA("Model") then
-            if HITBOX_ENABLED then
-                expandHitbox(killer)
-                
-                -- Atualiza tamanho se mudou
-                local data = expandedHitboxes[killer]
-                if data and data.hrp and data.hrp.Parent then
-                    data.hrp.Size = Vector3.new(HITBOX_SIZE, HITBOX_SIZE, HITBOX_SIZE)
-                    data.hrp.CanCollide = false
-                    
-                    -- Atualiza cabeça também
-                    if HEAD_ENABLED and data.head and data.head.Parent then
-                        data.head.Size = Vector3.new(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE)
-                        data.head.CanCollide = false
-                    end
-                end
+    -- Aplica hitboxes
+    for _, monster in pairs(killers:GetChildren()) do
+        if monster:IsA("Model") then
+            if HITBOX_ENABLED or HEAD_ENABLED then
+                expandMonster(monster)
             else
-                restoreHitbox(killer)
+                restoreMonster(monster)
             end
         end
     end
 end
 
-local function toggleHitboxes(enabled)
-    HITBOX_ENABLED = enabled
-    
-    if not enabled then
-        -- Restaura todas as hitboxes
-        for killer, _ in pairs(expandedHitboxes) do
-            restoreHitbox(killer)
+-- ============================================
+-- INTERFACE RAYFIELD SIMPLIFICADA
+-- ============================================
+
+-- Aba de Teleportes
+local TeleportTab = Window:CreateTab("Teleportes", 4483362458)
+
+-- Armas
+TeleportTab:CreateSection("🔫 Armas")
+local function createTeleportButton(locationName)
+    local button = TeleportTab:CreateButton({
+        Name = (LocationEmojis[locationName] or "📍") .. " " .. locationName,
+        Callback = function()
+            teleportToLocation(locationName, TeleportLocations[locationName])
         end
-    else
-        -- Reaplica todas as hitboxes
-        updateAllHitboxes()
-    end
+    })
+    buttonReferences[locationName] = button
 end
 
-local function setHitboxSize(size)
-    HITBOX_SIZE = size
-    updateAllHitboxes()
-end
+createTeleportButton("Alien Gun")
 
-local function setHeadSize(size)
-    HEAD_SIZE = size
-    updateAllHitboxes()
-end
+-- Bases
+TeleportTab:CreateSection("🏠 Bases")
+createTeleportButton("Base Segura")
+createTeleportButton("Energia")
+createTeleportButton("Roleta")
+createTeleportButton("Upgrade")
 
-local function toggleHead(enabled)
-    HEAD_ENABLED = enabled
-    updateAllHitboxes()
-end
+-- Powers
+TeleportTab:CreateSection("⚡ Powers")
+createTeleportButton("2X dano")
+createTeleportButton("Revive")
+createTeleportButton("Cura Bala")
+createTeleportButton("Colete")
+createTeleportButton("Speed Cola")
+createTeleportButton("Eletric Cherry")
 
--- ============================================
--- CATEGORIAS DO TELEPORTE
--- ============================================
+-- Aba do Hitbox Expander
+local HitboxTab = Window:CreateTab("🎯 Hitbox", 7733765391)
 
--- Categoria: ARMAS
-local ArmasCategory = {
-    ["Alien Gun"] = TeleportLocations["Alien Gun"]
-}
+HitboxTab:CreateSection("Expansor de Hitbox INVISÍVEL")
+HitboxTab:CreateLabel("Hitboxes expandidas são 100% invisíveis")
 
--- Categoria: BASES/LOCAIS
-local BasesCategory = {
-    ["Base Segura"] = TeleportLocations["Base Segura"],
-    ["Energia"] = TeleportLocations["Energia"],
-    ["Roleta"] = TeleportLocations["Roleta"],
-    ["Upgrade"] = TeleportLocations["Upgrade"]
-}
-
--- Categoria: POWERS
-local PowersCategory = {
-    ["2X dano"] = TeleportLocations["2X dano"],
-    ["Revive"] = TeleportLocations["Revive"],
-    ["Cura Bala"] = TeleportLocations["Cura Bala"],
-    ["Colete"] = TeleportLocations["Colete"],
-    ["Speed Cola"] = TeleportLocations["Speed Cola"],
-    ["Eletric Cherry"] = TeleportLocations["Eletric Cherry"]
-}
-
--- Criar as abas
-createCategory("Armas", 7733765391, "Armas", ArmasCategory)
-createCategory("Bases", 4483362458, "Bases e Locais", BasesCategory)
-createCategory("Powers", 9753762469, "Poderes e Buffs", PowersCategory)
-
--- ============================================
--- ABA DO HITBOX EXPANDER AVANÇADO (RAYFIELD)
--- ============================================
-local HitboxTab = Window:CreateTab("🎯 Hitbox Expander", 6031300884)
-
-HitboxTab:CreateSection("🎯 Expansor de Hitbox Avançado")
-HitboxTab:CreateLabel("Aumenta hitbox do CORPO e CABEÇA dos inimigos")
-
--- Toggle do Hitbox Expander (Corpo)
-local HitboxToggle = HitboxTab:CreateToggle({
-    Name = "Ativar Expansão do CORPO",
+-- Toggles
+local BodyToggle = HitboxTab:CreateToggle({
+    Name = "Expandir Corpo",
     CurrentValue = HITBOX_ENABLED,
     Callback = function(value)
         HITBOX_ENABLED = value
-        toggleHitboxes(value)
-        
-        if value then
-            Rayfield:Notify({
-                Title = "Hitbox Expander",
-                Content = "Corpo dos inimigos expandido!",
-                Duration = 3,
-                Image = 4483362458
-            })
-        else
-            Rayfield:Notify({
-                Title = "Hitbox Expander",
-                Content = "Corpo dos inimigos restaurado!",
-                Duration = 3,
-                Image = 4483362458
-            })
-        end
-    end,
+        updateAllHitboxes()
+    end
 })
 
--- Toggle da Cabeça
 local HeadToggle = HitboxTab:CreateToggle({
-    Name = "Ativar Expansão da CABEÇA",
+    Name = "Expandir Cabeça",
     CurrentValue = HEAD_ENABLED,
     Callback = function(value)
         HEAD_ENABLED = value
-        toggleHead(value)
-        
-        if value then
-            Rayfield:Notify({
-                Title = "Headshot Expander",
-                Content = "Cabeça dos inimigos expandida!",
-                Duration = 3,
-                Image = 4483362458
-            })
-        else
-            Rayfield:Notify({
-                Title = "Headshot Expander",
-                Content = "Cabeça dos inimigos restaurada!",
-                Duration = 3,
-                Image = 4483362458
-            })
-        end
-    end,
+        updateAllHitboxes()
+    end
 })
 
--- Slider para tamanho da hitbox do CORPO
-HitboxTab:CreateSection("📏 Tamanho do CORPO")
+-- Sliders
 HitboxTab:CreateSlider({
     Name = "Tamanho do Corpo",
-    Range = {5, 50},
+    Range = {1, 30},
     Increment = 1,
-    Suffix = " unidades",
+    Suffix = "x",
     CurrentValue = HITBOX_SIZE,
     Callback = function(value)
-        setHitboxSize(value)
-        Rayfield:Notify({
-            Title = "Tamanho Atualizado",
-            Content = "Corpo: " .. value .. " unidades",
-            Duration = 2,
-            Image = 4483362458
-        })
-    end,
-})
-
--- Slider para tamanho da hitbox da CABEÇA
-HitboxTab:CreateSection("🎯 Tamanho da CABEÇA")
-HitboxTab:CreateSlider({
-    Name = "Tamanho da Cabeça",
-    Range = {3, 20},
-    Increment = 1,
-    Suffix = " unidades",
-    CurrentValue = HEAD_SIZE,
-    Callback = function(value)
-        setHeadSize(value)
-        Rayfield:Notify({
-            Title = "Tamanho Atualizado",
-            Content = "Cabeça: " .. value .. " unidades",
-            Duration = 2,
-            Image = 4483362458
-        })
-    end,
-})
-
--- Botão para atualizar hitboxes
-HitboxTab:CreateSection("⚙️ Controles")
-HitboxTab:CreateButton({
-    Name = "🔄 Atualizar Todas as Hitboxes",
-    Callback = function()
-        updateAllHitboxes()
-        Rayfield:Notify({
-            Title = "Hitboxes Atualizadas",
-            Content = "Todas as hitboxes foram atualizadas!",
-            Duration = 3,
-            Image = 4483362458
-        })
-    end,
-})
-
--- Botão para restaurar tudo
-HitboxTab:CreateButton({
-    Name = "🗑️ Restaurar Todas as Hitboxes",
-    Callback = function()
-        for killer, _ in pairs(expandedHitboxes) do
-            restoreHitbox(killer)
-        end
-        expandedHitboxes = {}
-        Rayfield:Notify({
-            Title = "Hitboxes Restauradas",
-            Content = "Todas as hitboxes foram restauradas ao normal!",
-            Duration = 3,
-            Image = 4483362458
-        })
-    end,
-})
-
--- Informações
-HitboxTab:CreateSection("📊 Informações Atuais")
-local BodySizeLabel = HitboxTab:CreateLabel("Tamanho do Corpo: " .. HITBOX_SIZE)
-local HeadSizeLabel = HitboxTab:CreateLabel("Tamanho da Cabeça: " .. HEAD_SIZE)
-local StatusLabel = HitboxTab:CreateLabel("Status: Aguardando inimigos...")
-
--- ============================================
--- ABA DE INFORMAÇÕES
--- ============================================
-local InfoTab = Window:CreateTab("📋 Informações", 6031068421)
-
-InfoTab:CreateSection("🎮 Sistema Completo")
-InfoTab:CreateLabel("Teleport System + Hitbox Expander Avançado")
-InfoTab:CreateLabel("Total de locais: 11")
-InfoTab:CreateLabel("Cooldown teleporte: " .. cooldownTime .. "s")
-
-InfoTab:CreateSection("⚙️ Configurações do Teleporte")
-InfoTab:CreateLabel("• Base Segura: Teleporte PERMANENTE")
-InfoTab:CreateLabel("• Outros locais: Teleporte TEMPORÁRIO (5s)")
-InfoTab:CreateLabel("• Recarga: " .. cooldownTime .. " segundos entre usos")
-
-InfoTab:CreateSection("🎯 Configurações do Hitbox Expander")
-InfoTab:CreateLabel("• Corpo: Ajustável (5-50 unidades)")
-InfoTab:CreateLabel("• Cabeça: Ajustável (3-20 unidades)")
-InfoTab:CreateLabel("• Headshots: Causam mais dano!")
-InfoTab:CreateLabel("• Atualiza automaticamente a cada 1s")
-
-InfoTab:CreateSection("📁 Estrutura do Jogo")
-InfoTab:CreateLabel("• Inimigos: workspace.Killers")
-InfoTab:CreateLabel("• Monitora novos inimigos automaticamente")
-InfoTab:CreateLabel("• Restaura ao normal quando desativado")
-
--- ============================================
--- INICIALIZAÇÃO DO HITBOX EXPANDER
--- ============================================
-spawn(function()
-    wait(2) -- Esperar carregar
-    
-    -- Verificar se existe pasta Killers
-    local killersFolder = Workspace:FindFirstChild("Killers")
-    if killersFolder then
-        print("✅ Pasta Killers encontrada!")
-        print("📊 Inimigos detectados: " .. #killersFolder:GetChildren())
-        
-        -- Atualizar labels
-        if StatusLabel then
-            StatusLabel:Set("Inimigos: " .. #killersFolder:GetChildren())
-        end
-        
-        -- Inicializar hitboxes
+        HITBOX_SIZE = value
         if HITBOX_ENABLED then
             updateAllHitboxes()
         end
-        
-        -- Monitorar novos inimigos
-        killersFolder.ChildAdded:Connect(function(child)
-            if child:IsA("Model") and HITBOX_ENABLED then
-                task.wait(0.1)
-                expandHitbox(child)
-                
-                -- Atualizar contador
-                if StatusLabel then
-                    StatusLabel:Set("Inimigos: " .. #killersFolder:GetChildren())
-                end
-            end
-        end)
-        
-        killersFolder.ChildRemoved:Connect(function(child)
-            restoreHitbox(child)
-            
-            -- Atualizar contador
-            if StatusLabel then
-                StatusLabel:Set("Inimigos: " .. #killersFolder:GetChildren())
-            end
-        end)
-    else
-        print("⚠️ Pasta Killers não encontrada no Workspace!")
-        if StatusLabel then
-            StatusLabel:Set("ERRO: Pasta Killers não encontrada!")
+    end
+})
+
+HitboxTab:CreateSlider({
+    Name = "Tamanho da Cabeça",
+    Range = {1, 20},
+    Increment = 1,
+    Suffix = "x",
+    CurrentValue = HEAD_SIZE,
+    Callback = function(value)
+        HEAD_SIZE = value
+        if HEAD_ENABLED then
+            updateAllHitboxes()
         end
-        
-        Rayfield:Notify({
-            Title = "Aviso",
-            Content = "Pasta 'Killers' não encontrada no Workspace!",
-            Duration = 5,
-            Image = 4483362458
-        })
+    end
+})
+
+-- Botão de atualização
+HitboxTab:CreateButton({
+    Name = "Atualizar Hitboxes",
+    Callback = updateAllHitboxes
+})
+
+-- ============================================
+-- INICIALIZAÇÃO
+-- ============================================
+spawn(function()
+    wait(2)
+    
+    -- Inicializar hitboxes se ativado
+    if HITBOX_ENABLED or HEAD_ENABLED then
+        updateAllHitboxes()
     end
     
-    -- Loop de atualização automática
-    local updateTimer = 0
-    RunService.Heartbeat:Connect(function(dt)
-        updateTimer = updateTimer + dt
-        if updateTimer >= UPDATE_RATE then
-            updateTimer = 0
-            if HITBOX_ENABLED then
-                updateAllHitboxes()
-            end
+    -- Loop de atualização
+    while true do
+        wait(1)
+        if HITBOX_ENABLED or HEAD_ENABLED then
+            updateAllHitboxes()
         end
-    end)
+    end
 end)
 
--- Função para atualizar labels dinamicamente
-local function updateHitboxLabels()
-    if BodySizeLabel then
-        BodySizeLabel:Set("Tamanho do Corpo: " .. HITBOX_SIZE)
-    end
-    if HeadSizeLabel then
-        HeadSizeLabel:Set("Tamanho da Cabeça: " .. HEAD_SIZE)
-    end
-end
-
--- Atualizar labels quando mudar os valores
-HitboxTab:CreateSection("📈 Monitoramento")
-HitboxTab:CreateButton({
-    Name = "🔄 Atualizar Informações",
-    Callback = function()
-        updateHitboxLabels()
-        Rayfield:Notify({
-            Title = "Informações Atualizadas",
-            Content = "Valores atualizados na tela!",
-            Duration = 2,
-            Image = 4483362458
-        })
-    end,
-})
-
--- ============================================
--- MENSAGEM FINAL
--- ============================================
-print("==========================================")
-print("SURVIVAL SYSTEM v2.0 - CARREGADO!")
-print("==========================================")
-print("📁 Categorias: 3 (Armas, Bases, Powers)")
-print("🎯 Hitbox Expander: " .. (HITBOX_ENABLED and "ATIVADO" or "DESATIVADO"))
-print("🎯 Headshot Expander: " .. (HEAD_ENABLED and "ATIVADO" : "DESATIVADO"))
-print("📏 Tamanho Corpo: " .. HITBOX_SIZE .. " unidades")
-print("🎯 Tamanho Cabeça: " .. HEAD_SIZE .. " unidades")
-print("📍 Total de locais: 11")
-print("⏱️ Cooldown: " .. cooldownTime .. "s")
-print("==========================================")
+print("✅ Sistema carregado com sucesso!")
+print("🎯 Hitbox Expander: " .. (HITBOX_ENABLED and "Corpo ON" : "OFF") .. " | " .. (HEAD_ENABLED and "Cabeça ON" : "OFF"))
 
 Rayfield:Notify({
-    Title = "Sistema Carregado!",
-    Content = "Teleporte + Hitbox Expander Avançado prontos!",
-    Duration = 5,
-    Image = 4483362458
+    Title = "Sistema Pronto!",
+    Content = "Teleportes e Hitbox Expander carregados",
+    Duration = 3
 })
-
--- Inicializar labels
-updateHitboxLabels()
