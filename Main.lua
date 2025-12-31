@@ -197,55 +197,38 @@ local function createCategory(tabName, iconId, categoryTitle, locations)
 end
 
 -- ============================================
--- SISTEMA HITBOX EXPANDER (COMPLETO COM HEADSHOT)
+-- SISTEMA HITBOX EXPANDER (SEU SCRIPT INTEGRADO)
 -- ============================================
 
 -- Configurações do Hitbox Expander
-local HITBOX_SIZE = 15 -- Tamanho do corpo
-local HEAD_SIZE = 8 -- Tamanho da cabeça
+local HITBOX_SIZE = 15
 local UPDATE_RATE = 1
 local HITBOX_ENABLED = true
-local HEAD_ENABLED = true
 local expandedHitboxes = {}
 local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
 
 -- Funções do Hitbox Expander
 local function expandHitbox(killer)
     if not killer or expandedHitboxes[killer] then return end
     
     local hrp = killer:FindFirstChild("HumanoidRootPart")
-    local head = killer:FindFirstChild("Head")
     if not hrp then return end
     
-    -- Salva valores originais do corpo
+    -- Salva valores originais
     local originalSize = hrp.Size
     local originalCanCollide = hrp.CanCollide
     
-    local data = {
+    expandedHitboxes[killer] = {
         hrp = hrp,
         originalSize = originalSize,
         originalCanCollide = originalCanCollide
     }
     
-    -- Se tem cabeça, salva os valores originais dela também
-    if head then
-        data.head = head
-        data.originalHeadSize = head.Size
-        data.originalHeadCanCollide = head.CanCollide
-    end
-    
-    expandedHitboxes[killer] = data
-    
-    -- Aplica expansão no corpo
+    -- Aplica expansão SEM mexer em Transparency e Massless
     if HITBOX_ENABLED then
         hrp.Size = Vector3.new(HITBOX_SIZE, HITBOX_SIZE, HITBOX_SIZE)
         hrp.CanCollide = false
-    end
-    
-    -- Aplica expansão na cabeça (para headshots)
-    if HEAD_ENABLED and head then
-        head.Size = Vector3.new(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE)
-        head.CanCollide = false
     end
 end
 
@@ -253,18 +236,10 @@ local function restoreHitbox(killer)
     local data = expandedHitboxes[killer]
     if not data then return end
     
-    -- Restaura corpo
     local hrp = data.hrp
     if hrp and hrp.Parent then
         hrp.Size = data.originalSize
         hrp.CanCollide = data.originalCanCollide
-    end
-    
-    -- Restaura cabeça
-    local head = data.head
-    if head and head.Parent then
-        head.Size = data.originalHeadSize
-        head.CanCollide = data.originalHeadCanCollide
     end
     
     expandedHitboxes[killer] = nil
@@ -295,12 +270,6 @@ local function updateAllHitboxes()
                 if data and data.hrp and data.hrp.Parent then
                     data.hrp.Size = Vector3.new(HITBOX_SIZE, HITBOX_SIZE, HITBOX_SIZE)
                     data.hrp.CanCollide = false
-                    
-                    -- Atualiza cabeça também
-                    if HEAD_ENABLED and data.head and data.head.Parent then
-                        data.head.Size = Vector3.new(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE)
-                        data.head.CanCollide = false
-                    end
                 end
             else
                 restoreHitbox(killer)
@@ -323,18 +292,8 @@ local function toggleHitboxes(enabled)
     end
 end
 
-local function toggleHead(enabled)
-    HEAD_ENABLED = enabled
-    updateAllHitboxes()
-end
-
 local function setHitboxSize(size)
     HITBOX_SIZE = size
-    updateAllHitboxes()
-end
-
-local function setHeadSize(size)
-    HEAD_SIZE = size
     updateAllHitboxes()
 end
 
@@ -371,16 +330,16 @@ createCategory("Bases", 4483362458, "Bases e Locais", BasesCategory)
 createCategory("Powers", 9753762469, "Poderes e Buffs", PowersCategory)
 
 -- ============================================
--- ABA DO HITBOX EXPANDER (RAYFIELD) - COM 2 SLIDERS
+-- ABA DO HITBOX EXPANDER (RAYFIELD)
 -- ============================================
 local HitboxTab = Window:CreateTab("Hitbox Expander", 6031300884)
 
 HitboxTab:CreateSection("🎯 Expansor de Hitbox")
 HitboxTab:CreateLabel("Aumenta a hitbox dos inimigos para facilitar acertos")
 
--- Toggle do Hitbox Expander (CORPO)
+-- Toggle do Hitbox Expander
 local HitboxToggle = HitboxTab:CreateToggle({
-    Name = "✅ Ativar Hitbox do Corpo",
+    Name = "Ativar Hitbox Expander",
     CurrentValue = HITBOX_ENABLED,
     Callback = function(value)
         HITBOX_ENABLED = value
@@ -388,83 +347,42 @@ local HitboxToggle = HitboxTab:CreateToggle({
         
         if value then
             Rayfield:Notify({
-                Title = "Hitbox Corpo",
-                Content = "Ativado! Corpo dos inimigos expandido.",
-                Duration = 4,
+                Title = "Hitbox Expander",
+                Content = "Ativado! Inimigos ficaram mais fáceis de acertar.",
+                Duration = 5,
                 Image = 4483362458
             })
         else
             Rayfield:Notify({
-                Title = "Hitbox Corpo",
-                Content = "Desativado! Corpo voltou ao normal.",
-                Duration = 4,
+                Title = "Hitbox Expander",
+                Content = "Desativado! Hitboxes voltaram ao normal.",
+                Duration = 5,
                 Image = 4483362458
             })
         end
     end,
 })
 
--- Slider 1: Tamanho da hitbox do CORPO
+-- Slider para tamanho da hitbox
 HitboxTab:CreateSlider({
-    Name = "📦 Tamanho do Corpo",
+    Name = "Tamanho da Hitbox",
     Range = {5, 50},
     Increment = 1,
-    Suffix = " studs",
+    Suffix = " unidades",
     CurrentValue = HITBOX_SIZE,
     Callback = function(value)
         setHitboxSize(value)
     end,
 })
 
-HitboxTab:CreateSection("🎯 Expansor de Headshot")
-HitboxTab:CreateLabel("Expande a cabeça para facilitar headshots (mais dano!)")
-
--- Toggle do Hitbox Expander (CABEÇA)
-local HeadToggle = HitboxTab:CreateToggle({
-    Name = "🎯 Ativar Hitbox da Cabeça",
-    CurrentValue = HEAD_ENABLED,
-    Callback = function(value)
-        HEAD_ENABLED = value
-        toggleHead(value)
-        
-        if value then
-            Rayfield:Notify({
-                Title = "Hitbox Cabeça",
-                Content = "Ativado! Headshots ficaram mais fáceis!",
-                Duration = 4,
-                Image = 4483362458
-            })
-        else
-            Rayfield:Notify({
-                Title = "Hitbox Cabeça",
-                Content = "Desativado! Cabeça voltou ao normal.",
-                Duration = 4,
-                Image = 4483362458
-            })
-        end
-    end,
-})
-
--- Slider 2: Tamanho da hitbox da CABEÇA
-HitboxTab:CreateSlider({
-    Name = "🎯 Tamanho da Cabeça (Headshot)",
-    Range = {3, 20},
-    Increment = 1,
-    Suffix = " studs",
-    CurrentValue = HEAD_SIZE,
-    Callback = function(value)
-        setHeadSize(value)
-    end,
-})
-
 -- Botão para atualizar hitboxes
 HitboxTab:CreateButton({
-    Name = "🔄 Atualizar Hitboxes Manualmente",
+    Name = "🔄 Atualizar Hitboxes",
     Callback = function()
         updateAllHitboxes()
         Rayfield:Notify({
             Title = "Hitboxes Atualizadas",
-            Content = "Corpo e cabeça dos inimigos atualizados!",
+            Content = "Hitboxes dos inimigos foram atualizadas!",
             Duration = 3,
             Image = 4483362458
         })
@@ -473,10 +391,8 @@ HitboxTab:CreateButton({
 
 -- Informações
 HitboxTab:CreateSection("📊 Informações")
-HitboxTab:CreateLabel("🎯 Headshots causam MAIS dano!")
-HitboxTab:CreateLabel("📦 Corpo: " .. HITBOX_SIZE .. " studs")
-HitboxTab:CreateLabel("🎯 Cabeça: " .. HEAD_SIZE .. " studs")
-HitboxTab:CreateLabel("Inimigos em: Workspace.Killers")
+HitboxTab:CreateLabel("Inimigos na pasta 'Killers':")
+HitboxTab:CreateLabel("Tamanho atual: " .. HITBOX_SIZE .. " unidades")
 
 -- ============================================
 -- ABA DE INFORMAÇÕES
@@ -490,20 +406,13 @@ InfoTab:CreateLabel("Cooldown teleporte: " .. cooldownTime .. "s")
 
 InfoTab:CreateSection("🎮 Como Usar")
 InfoTab:CreateLabel("• Teleportes: 5s no local (Base Segura não volta)")
-InfoTab:CreateLabel("• Hitbox Corpo: Facilita acertar inimigos")
-InfoTab:CreateLabel("• Hitbox Cabeça: Facilita headshots (+ dano)")
+InfoTab:CreateLabel("• Hitbox Expander: Facilita acertar inimigos")
 InfoTab:CreateLabel("• Monstros: Na pasta workspace.Killers")
 
 InfoTab:CreateSection("⚙️ Configurações")
 InfoTab:CreateLabel("Base Segura: Teleporte permanente")
 InfoTab:CreateLabel("Outros: Teleporte temporário (5s)")
-InfoTab:CreateLabel("Corpo padrão: 15 studs")
-InfoTab:CreateLabel("Cabeça padrão: 8 studs")
-
-InfoTab:CreateSection("🎯 Dicas")
-InfoTab:CreateLabel("✅ Ative ambas as hitboxes para melhor resultado")
-InfoTab:CreateLabel("🎯 Mire na cabeça para causar mais dano")
-InfoTab:CreateLabel("📦 Ajuste os sliders ao seu gosto")
+InfoTab:CreateLabel("Hitbox Size: " .. HITBOX_SIZE .. " (ajustável)")
 
 -- ============================================
 -- INICIALIZAÇÃO DO HITBOX EXPANDER
@@ -549,7 +458,7 @@ spawn(function()
         updateTimer = updateTimer + dt
         if updateTimer >= UPDATE_RATE then
             updateTimer = 0
-            if HITBOX_ENABLED or HEAD_ENABLED then
+            if HITBOX_ENABLED then
                 updateAllHitboxes()
             end
         end
@@ -563,15 +472,14 @@ print("==========================================")
 print("SURVIVAL SYSTEM - CARREGADO COM SUCESSO!")
 print("==========================================")
 print("📁 Categorias: 3 (Armas, Bases, Powers)")
-print("🎯 Hitbox Corpo: " .. (HITBOX_ENABLED and "Ativado" or "Desativado") .. " (" .. HITBOX_SIZE .. " studs)")
-print("🎯 Hitbox Cabeça: " .. (HEAD_ENABLED and "Ativado" or "Desativado") .. " (" .. HEAD_SIZE .. " studs)")
+print("🎯 Hitbox Expander: " .. (HITBOX_ENABLED and "Ativado" or "Desativado"))
 print("📍 Total de locais: 11")
 print("⏱️ Cooldown: " .. cooldownTime .. "s")
 print("==========================================")
 
 Rayfield:Notify({
     Title = "Sistema Carregado!",
-    Content = "Teleporte + Hitbox (Corpo + Cabeça) prontos!",
-    Duration = 6,
+    Content = "Teleporte + Hitbox Expander prontos!",
+    Duration = 5,
     Image = 4483362458
 })
